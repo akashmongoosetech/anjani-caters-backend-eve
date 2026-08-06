@@ -1,0 +1,13 @@
+node_modules
+.env
+.env.local
+.env.*.local
+.env.test
+*.log
+.DS_Store
+.vscode
+.idea
+uploads/*
+!uploads/.gitkeep
+data/*.json
+!data/.gitkeep
