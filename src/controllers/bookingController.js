@@ -4,6 +4,7 @@ import { ApiError } from '../utils/apiError.js';
 import { BOOKING_STATUS } from '../constants/status.js';
 import { sendBookingAckEmail, sendAdminNotification } from '../utils/emailService.js';
 import { createNotificationHelper } from '../utils/notificationService.js';
+import { safeSearchTerm } from '../utils/regexUtils.js';
 
 function generateBookingReference() {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -58,7 +59,7 @@ export const getAllBookings = async (req, res, next) => {
     const query = {};
 
     if (search) {
-      const q = String(search);
+      const q = safeSearchTerm(search);
       query.$or = [
         { fullName: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } },
@@ -106,7 +107,16 @@ export const getBookingById = async (req, res, next) => {
 export const updateBooking = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updated = await Booking.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).lean();
+    const allowedFields = [
+      'fullName', 'email', 'phone', 'eventType', 'eventDate', 'eventTime',
+      'guestCount', 'preferredCuisine', 'cateringPackage', 'budget',
+      'venueAddress', 'city', 'state', 'pincode', 'specialRequirements', 'notes', 'source'
+    ];
+    const updateData = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updateData[field] = req.body[field];
+    }
+    const updated = await Booking.findByIdAndUpdate(id, updateData, { new: true, runValidators: true }).lean();
     if (!updated) return next(new ApiError(404, 'Booking not found'));
     return res.status(200).json(new ApiResponse(200, updated, 'Booking updated successfully'));
   } catch (error) {

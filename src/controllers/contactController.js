@@ -3,6 +3,10 @@ import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
 import { sendContactAckEmail, sendAdminNotification } from '../utils/emailService.js';
 import { createNotificationHelper } from '../utils/notificationService.js';
+import { safeSearchTerm } from '../utils/regexUtils.js';
+import { pick } from '../utils/pick.js';
+
+const CONTACT_FIELDS = ['name', 'email', 'phone', 'eventType', 'eventDate', 'guestCount', 'message'];
 
 function generateReference() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -13,7 +17,7 @@ function generateReference() {
 
 export const submitContact = async (req, res, next) => {
   try {
-    const contact = await Contact.create({ ...req.body, reference: generateReference() });
+    const contact = await Contact.create({ ...pick(req.body, CONTACT_FIELDS), reference: generateReference() });
 
     sendContactAckEmail(contact).catch((err) => {
       console.error('[Contact] Customer thank-you email failed:', err.message);
@@ -55,7 +59,7 @@ export const getAllContacts = async (req, res, next) => {
     const query = {};
 
     if (search) {
-      const q = String(search);
+      const q = safeSearchTerm(search);
       query.$or = [
         { name: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } },

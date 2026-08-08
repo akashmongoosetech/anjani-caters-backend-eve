@@ -71,7 +71,7 @@ export function logSmtpHealth() {
   const pass = process.env.SMTP_PASS;
   const port = Number(process.env.SMTP_PORT) || 587;
   const mode = host && user && pass ? 'real SMTP' : 'streamTransport (emails NOT delivered)';
-  console.log(`[Email] SMTP health: mode=${mode} host=${host || '(none)'} port=${port} from=${getSenderFrom()}`);
+  console.log(`[Email] Transport mode: ${mode} host=${host || '(none)'} port=${port} from=${getSenderFrom()}`);
   if (mode === 'real SMTP') {
     const t = getTransporter();
     t.verify()
@@ -303,9 +303,10 @@ async function safeSendMail(to, subject, html, formType) {
   const cleanTo = String(to || '').replace(/[\r\n]/g, '').trim();
   console.log(`[EMAIL] Sending [${formType}] -> ${cleanTo} | Subject: "${subject}"`);
   try {
+    const cleanSubject = String(subject || '').replace(/[\r\n]/g, '').trim();
+
     const transporter = getTransporter();
     const from = getSenderFrom();
-    const cleanSubject = String(subject || '').replace(/[\r\n]/g, '').trim();
 
     const info = await transporter.sendMail({ from, to: cleanTo, subject: cleanSubject, html });
 
@@ -411,7 +412,7 @@ export async function sendNewsletterConfirmation(email) {
 export async function sendWelcomeEmail(userData, plainPassword) {
   const { name, email, username, role, password } = userData;
   const finalPassword = plainPassword || password || 'Welcome@123';
-  const loginUrl = process.env.LOGIN_URL || 'https://anjani-eveng.vercel.app/admin-login';
+  const loginUrl = process.env.LOGIN_URL || 'https://anjanievents.in/admin-login';
 
   const subject = `Welcome to Anjani Catering & Events — Your Account Is Ready`;
   const html = generateHtmlTemplate({
@@ -438,9 +439,34 @@ export async function sendWelcomeEmail(userData, plainPassword) {
   return sendMail({ to: email, subject, html });
 }
 
+export async function sendPasswordResetOtp(userData, otp) {
+  const { name, email } = userData;
+  const loginUrl = process.env.LOGIN_URL || 'https://anjanievents.in/admin-login';
+
+  const subject = 'Your Anjani Catering Password Reset Code';
+  const html = generateHtmlTemplate({
+    customerName: name || 'Valued Team Member',
+    subject,
+    mainTitle: 'Reset Your Password',
+    mainMessage: `We received a request to reset the password for your <strong>Anjani Catering & Events</strong> admin account. Use the 6-digit verification code below to continue. This code expires in <strong>10 minutes</strong>.`,
+    summaryFields: [
+      { label: 'Account Email', value: email },
+      { label: 'Verification Code', value: otp }
+    ],
+    nextSteps: [
+      'Return to the admin login screen and open the "Forgot Password" dialog.',
+      'Enter the 6-digit code above together with your new password.',
+      'If you did not request this reset, please ignore this email and contact your Super Admin.'
+    ],
+    ctaText: 'Log In to Admin Panel',
+    ctaUrl: loginUrl
+  });
+  return safeSendMail(email, subject, html, 'Password Reset OTP');
+}
+
 export async function sendPasswordResetEmail(userData, newPassword) {
   const { name, email } = userData;
-  const loginUrl = process.env.LOGIN_URL || 'https://anjani-eveng.vercel.app/admin-login';
+  const loginUrl = process.env.LOGIN_URL || 'https://anjanievents.in/admin-login';
 
   const subject = 'Your Anjani Catering Password Has Been Reset';
   const html = generateHtmlTemplate({
@@ -470,8 +496,6 @@ export async function sendAdminNotification(formType, data) {
   const cleanAdmin = adminEmail.replace(/[\r\n]/g, '').trim();
   console.log(`[EMAIL] Sending admin notification [${formType}] -> ${cleanAdmin}`);
   try {
-    const transporter = getTransporter();
-    const from = getSenderFrom();
     const subject = `[Admin Notification] New submission on ${formType}`;
     const tableRows = Object.entries(data)
       .map(([key, val]) => `
@@ -481,7 +505,10 @@ export async function sendAdminNotification(formType, data) {
       </tr>`)
       .join('');
     const html = `<!DOCTYPE html><html><body style="font-family: Arial, sans-serif; background-color: #FDFBF7; padding: 25px; color: #1A1A1A;"><div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #EAE5DB; border-radius: 12px; overflow: hidden; padding: 25px;"><h2 style="color: #1F3E29; border-bottom: 2px solid #D49A5B; padding-bottom: 10px; margin-top: 0;">New Form Submission Alerts</h2><p style="font-size: 13px;">A customer has submitted details on the <strong>${formType}</strong> of the website.</p><table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #F7F4EE;">${tableRows}</table><p style="font-size: 11px; color: #555555;">This is an automated system dispatch. Anjani Catering & Events Back-End Control Panel.</p></div></body></html>`;
-    await transporter.sendMail({ from, to: cleanAdmin, subject: subject.replace(/[\r\n]/g, '').trim(), html });
+    const cleanSubject = subject.replace(/[\r\n]/g, '').trim();
+    const transporter = getTransporter();
+    const from = getSenderFrom();
+    await transporter.sendMail({ from, to: cleanAdmin, subject: cleanSubject, html });
     console.log(`[EMAIL SUCCESS] Admin notice [${formType}] -> ${cleanAdmin}`);
     return { success: true };
   } catch (error) {

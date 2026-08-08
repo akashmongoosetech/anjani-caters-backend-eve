@@ -1,6 +1,13 @@
 import { Package } from '../models/Package.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
+import { pick } from '../utils/pick.js';
+import { safeSearchTerm } from '../utils/regexUtils.js';
+
+const PACKAGE_FIELDS = [
+  'name', 'description', 'price', 'minGuests', 'maxGuests',
+  'includedServices', 'includedDishes', 'image', 'popular', 'featured', 'status'
+];
 
 export const getPackages = async (req, res, next) => {
   try {
@@ -8,7 +15,7 @@ export const getPackages = async (req, res, next) => {
 
     const query = {};
     if (search) {
-      const q = String(search);
+      const q = safeSearchTerm(search);
       query.$or = [
         { name: { $regex: q, $options: 'i' } },
         { description: { $regex: q, $options: 'i' } },
@@ -56,7 +63,7 @@ export const getPackageById = async (req, res, next) => {
 
 export const createPackage = async (req, res, next) => {
   try {
-    const pkg = await Package.create(req.body);
+    const pkg = await Package.create(pick(req.body, PACKAGE_FIELDS));
     return res.status(201).json(new ApiResponse(201, pkg, 'Package created successfully'));
   } catch (error) {
     next(error);
@@ -66,7 +73,7 @@ export const createPackage = async (req, res, next) => {
 export const updatePackage = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updated = await Package.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).lean();
+    const updated = await Package.findByIdAndUpdate(id, pick(req.body, PACKAGE_FIELDS), { new: true, runValidators: true }).lean();
     if (!updated) return next(new ApiError(404, 'Package not found'));
     return res.status(200).json(new ApiResponse(200, updated, 'Package updated successfully'));
   } catch (error) {

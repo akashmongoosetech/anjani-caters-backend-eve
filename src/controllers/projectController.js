@@ -1,6 +1,12 @@
 import { Project } from '../models/Project.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
+import { pick } from '../utils/pick.js';
+
+const PROJECT_FIELDS = [
+  'title', 'slug', 'category', 'client', 'date', 'location',
+  'guestCount', 'description', 'image', 'gallery', 'menuServed'
+];
 
 export const getProjects = async (req, res, next) => {
   try {
@@ -24,7 +30,7 @@ export const getProjectBySlug = async (req, res, next) => {
 
 export const createProject = async (req, res, next) => {
   try {
-    const project = await Project.create(req.body);
+    const project = await Project.create(pick(req.body, PROJECT_FIELDS));
     return res.status(201).json(new ApiResponse(201, project, 'Project created successfully'));
   } catch (error) {
     next(error);
@@ -34,7 +40,7 @@ export const createProject = async (req, res, next) => {
 export const updateProject = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updated = await Project.findByIdAndUpdate(id, req.body, { new: true });
+    const updated = await Project.findByIdAndUpdate(id, pick(req.body, PROJECT_FIELDS), { new: true });
     if (!updated) return next(new ApiError(404, 'Project not found'));
     return res.status(200).json(new ApiResponse(200, updated, 'Project updated successfully'));
   } catch (error) {

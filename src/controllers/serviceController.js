@@ -1,16 +1,24 @@
 import { Service } from '../models/Service.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
+import { pick } from '../utils/pick.js';
+import { safeSearchTerm } from '../utils/regexUtils.js';
+
+const SERVICE_FIELDS = [
+  'title', 'slug', 'shortDescription', 'fullDescription', 'image', 'icon',
+  'category', 'featured', 'active', 'seoTitle', 'seoDescription', 'seoKeywords'
+];
 
 export const getServices = async (req, res, next) => {
   try {
     const { search, category, featured, active, sortBy, page = '1', limit = '50' } = req.query;
     const query = {};
     if (search) {
+      const q = safeSearchTerm(search);
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { shortDescription: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } },
+        { title: { $regex: q, $options: 'i' } },
+        { shortDescription: { $regex: q, $options: 'i' } },
+        { category: { $regex: q, $options: 'i' } },
       ];
     }
     if (category && category !== 'All') query.category = category;
@@ -54,7 +62,7 @@ export const getServiceBySlug = async (req, res, next) => {
 
 export const createService = async (req, res, next) => {
   try {
-    const service = await Service.create(req.body);
+    const service = await Service.create(pick(req.body, SERVICE_FIELDS));
     return res.status(201).json(new ApiResponse(201, service, 'Service created successfully'));
   } catch (error) {
     next(error);
@@ -64,7 +72,7 @@ export const createService = async (req, res, next) => {
 export const updateService = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updated = await Service.findByIdAndUpdate(id, req.body, { new: true });
+    const updated = await Service.findByIdAndUpdate(id, pick(req.body, SERVICE_FIELDS), { new: true });
     if (!updated) return next(new ApiError(404, 'Service not found'));
     return res.status(200).json(new ApiResponse(200, updated, 'Service updated successfully'));
   } catch (error) {

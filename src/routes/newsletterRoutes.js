@@ -8,14 +8,15 @@ import {
   exportSubscribersCSV 
 } from '../controllers/newsletterController.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/roleMiddleware.js';
 
 const router = Router();
 
 router.post('/subscribe', subscribeNewsletter);
-router.get('/', protect, getSubscribers);
-router.get('/export', protect, exportSubscribersCSV);
-router.patch('/:id/status', protect, updateSubscriberStatus);
-router.delete('/:id', protect, deleteSubscriber);
-router.post('/bulk-delete', protect, bulkDeleteSubscribers);
+router.get('/', protect, authorize('super_admin', 'admin', 'manager'), getSubscribers);
+router.get('/export', protect, authorize('super_admin', 'admin', 'manager'), exportSubscribersCSV);
+router.patch('/:id/status', protect, authorize('super_admin', 'admin', 'manager'), updateSubscriberStatus);
+router.delete('/:id', protect, authorize('super_admin', 'admin', 'manager'), deleteSubscriber);
+router.post('/bulk-delete', protect, authorize('super_admin', 'admin', 'manager'), bulkDeleteSubscribers);
 
 export default router;

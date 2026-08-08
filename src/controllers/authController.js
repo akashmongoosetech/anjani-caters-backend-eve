@@ -1,10 +1,12 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { User } from '../models/User.js';
 import { generateToken } from '../utils/jwt.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
 import { ROLES } from '../constants/roles.js';
+import { sendPasswordResetOtp } from '../utils/emailService.js';
 
 function dbIsConnected() {
   return mongoose.connection.readyState === 1;
@@ -21,7 +23,7 @@ export const register = async (req, res, next) => {
   try {
     const dbErr = requireDb(); if (dbErr) return next(dbErr);
 
-    const { name, email, mobile, password, role, profilePicture } = req.body;
+    const { name, email, mobile, password, profilePicture } = req.body;
 
     let existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -29,7 +31,8 @@ export const register = async (req, res, next) => {
     }
 
     const hashedPassword = await hashPassword(password);
-    const userRole = role ? role.toLowerCase().replace(/\s+/g, '_') : ROLES.ADMIN;
+    // Role/permissions can NEVER be supplied by the client on public registration.
+    const userRole = ROLES.CUSTOMER;
 
     const newUser = await User.create({
       name,
@@ -189,7 +192,7 @@ export const updateProfile = async (req, res, next) => {
   }
 };
 
-export const verifyAccount = async (req, res, next) => {
+export const forgotPassword = async (req, res, next) => {
   try {
     const dbErr = requireDb(); if (dbErr) return next(dbErr);
 
@@ -202,14 +205,23 @@ export const verifyAccount = async (req, res, next) => {
       $or: [{ email: emailOrMobile }, { mobile: emailOrMobile }]
     });
 
+    // Always respond generically to avoid leaking whether an account exists.
     if (!user) {
-      return next(new ApiError(404, 'No account found with that email or mobile.'));
+      return res.status(200).json(new ApiResponse(200, { sent: false }, 'If that account exists, a verification code has been sent.'));
     }
 
-    return res.status(200).json(new ApiResponse(200, {
-      verified: true,
-      email: user.email
-    }, 'Account verified successfully.'));
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const codeHash = await hashPassword(code);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { otpReset: { codeHash, expiresAt: new Date(Date.now() + 10 * 60 * 1000) } } }
+    );
+
+    sendPasswordResetOtp(user, code).catch((err) => {
+      console.error('[Email] Password reset OTP send failed:', err.message);
+    });
+
+    return res.status(200).json(new ApiResponse(200, { sent: true }, 'If that account exists, a verification code has been sent.'));
   } catch (error) {
     next(error);
   }
@@ -219,9 +231,9 @@ export const resetPassword = async (req, res, next) => {
   try {
     const dbErr = requireDb(); if (dbErr) return next(dbErr);
 
-    const { emailOrMobile, newPassword } = req.body;
-    if (!emailOrMobile || !newPassword) {
-      return next(new ApiError(400, 'Email/mobile and new password are required.'));
+    const { emailOrMobile, otp, newPassword } = req.body;
+    if (!emailOrMobile || !otp || !newPassword) {
+      return next(new ApiError(400, 'Email/mobile, verification code, and new password are required.'));
     }
     if (newPassword.length < 8) {
       return next(new ApiError(400, 'Password must be at least 8 characters.'));
@@ -229,14 +241,57 @@ export const resetPassword = async (req, res, next) => {
 
     const user = await User.findOne({ $or: [{ email: emailOrMobile }, { mobile: emailOrMobile }] });
 
-    if (!user) {
-      return next(new ApiError(404, 'Account not found.'));
+    if (!user || !user.otpReset || !user.otpReset.codeHash || !user.otpReset.expiresAt) {
+      return next(new ApiError(400, 'No password reset has been requested for this account.'));
     }
 
-    user.password = await hashPassword(newPassword);
-    await user.save();
+    if (new Date(user.otpReset.expiresAt) < new Date()) {
+      return next(new ApiError(400, 'This verification code has expired. Please request a new one.'));
+    }
+
+    const isCodeValid = await comparePassword(otp, user.otpReset.codeHash);
+    if (!isCodeValid) {
+      return next(new ApiError(400, 'Invalid verification code. Please check and try again.'));
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { password: newPasswordHash, otpReset: { codeHash: '', expiresAt: null } } }
+    );
 
     return res.status(200).json(new ApiResponse(200, null, 'Password reset successfully.'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const changePassword = async (req, res, next) => {
+  try {
+    const dbErr = requireDb(); if (dbErr) return next(dbErr);
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return next(new ApiError(400, 'Current password and new password are required.'));
+    }
+    if (newPassword.length < 8) {
+      return next(new ApiError(400, 'Password must be at least 8 characters.'));
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return next(new ApiError(404, 'Authenticated user profile not found.'));
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.password);
+    if (!isMatch) {
+      return next(new ApiError(400, 'Current password is incorrect.'));
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    await User.updateOne({ _id: req.user.id }, { $set: { password: newPasswordHash } });
+
+    return res.status(200).json(new ApiResponse(200, null, 'Password changed successfully.'));
   } catch (error) {
     next(error);
   }

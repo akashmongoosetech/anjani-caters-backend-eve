@@ -25,7 +25,7 @@ export const seedAdmin = async () => {
       verified: true,
     });
 
-    console.log(`[Seed] Admin created: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+    console.log(`[Seed] Admin created: ${ADMIN_EMAIL}`);
   } catch (error) {
     console.error(`[Seed] Failed to create admin: ${error.message}`);
   }

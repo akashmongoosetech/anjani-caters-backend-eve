@@ -4,6 +4,8 @@ import { ApiError } from '../utils/apiError.js';
 import { hashPassword } from '../utils/password.js';
 import { sendWelcomeEmail, sendPasswordResetEmail } from '../utils/emailService.js';
 import { createNotificationHelper } from '../utils/notificationService.js';
+import { safeSearchTerm } from '../utils/regexUtils.js';
+import { pick } from '../utils/pick.js';
 
 export const getUsers = async (req, res, next) => {
   try {
@@ -11,7 +13,7 @@ export const getUsers = async (req, res, next) => {
 
     const query = { isDeleted: { $ne: true } };
     if (search) {
-      const q = String(search);
+      const q = safeSearchTerm(search);
       query.$or = [
         { firstName: { $regex: q, $options: 'i' } },
         { lastName: { $regex: q, $options: 'i' } },
@@ -139,7 +141,11 @@ export const createUser = async (req, res, next) => {
 export const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const body = { ...req.body };
+    const allowedFields = [
+      'firstName', 'lastName', 'name', 'email', 'mobile', 'username',
+      'role', 'status', 'profilePicture', 'permissions'
+    ];
+    const body = pick(req.body, allowedFields);
 
     if (body.email) body.email = body.email.trim().toLowerCase();
     if (body.firstName || body.lastName) {

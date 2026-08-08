@@ -1,6 +1,9 @@
 import { FAQ } from '../models/FAQ.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
+import { pick } from '../utils/pick.js';
+
+const FAQ_FIELDS = ['question', 'answer', 'category', 'order'];
 
 export const getFAQs = async (req, res, next) => {
   try {
@@ -13,7 +16,7 @@ export const getFAQs = async (req, res, next) => {
 
 export const createFAQ = async (req, res, next) => {
   try {
-    const faq = await FAQ.create(req.body);
+    const faq = await FAQ.create(pick(req.body, FAQ_FIELDS));
     return res.status(201).json(new ApiResponse(201, faq, 'FAQ created successfully'));
   } catch (error) {
     next(error);
@@ -23,7 +26,7 @@ export const createFAQ = async (req, res, next) => {
 export const updateFAQ = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updated = await FAQ.findByIdAndUpdate(id, req.body, { new: true });
+    const updated = await FAQ.findByIdAndUpdate(id, pick(req.body, FAQ_FIELDS), { new: true });
     if (!updated) return next(new ApiError(404, 'FAQ not found'));
     return res.status(200).json(new ApiResponse(200, updated, 'FAQ updated successfully'));
   } catch (error) {

@@ -7,12 +7,13 @@ import {
   deleteNotification,
   createNotificationApi
 } from '../controllers/notificationController.js';
-import { authMiddleware } from '../middlewares/authMiddleware.js';
+import { protect } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/roleMiddleware.js';
 
 const router = Router();
 
-// Protect all notification routes with authMiddleware
-router.use(authMiddleware);
+// All notification routes require an authenticated staff/admin account.
+router.use(protect, authorize('super_admin', 'admin', 'manager', 'staff'));
 
 router.get('/', getNotifications);
 router.get('/unread-count', getUnreadCount);

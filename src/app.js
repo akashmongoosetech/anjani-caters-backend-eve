@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
 import routes from './routes/index.js';
 import { getSitemap } from './controllers/sitemapController.js';
 import { errorHandler } from './middlewares/errorMiddleware.js';
@@ -49,6 +50,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan('dev'));
+app.use(mongoSanitize());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());

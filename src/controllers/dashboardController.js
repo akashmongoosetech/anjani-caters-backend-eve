@@ -8,6 +8,7 @@ import { MenuItem } from '../models/MenuItem.js';
 import { Package } from '../models/Package.js';
 import { Gallery } from '../models/Gallery.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { BOOKING_STATUS } from '../constants/status.js';
 
 async function countDocs(Model, fallback = 0) {
   try {
@@ -46,10 +47,10 @@ export const getDashboardStats = async (req, res, next) => {
     let revenueByMonth = [];
 
     try {
-      pendingBookings = await Booking.countDocuments({ status: { $regex: /^new$/i } });
+      pendingBookings = await Booking.countDocuments({ status: { $in: [BOOKING_STATUS.NEW_BOOKING, BOOKING_STATUS.PENDING] } });
     } catch { pendingBookings = 0; }
     try {
-      confirmedBookings = await Booking.countDocuments({ status: { $regex: /^confirmed$/i } });
+      confirmedBookings = await Booking.countDocuments({ status: BOOKING_STATUS.CONFIRMED });
     } catch { confirmedBookings = 0; }
 
     try {

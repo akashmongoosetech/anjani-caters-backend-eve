@@ -2,10 +2,14 @@ import { Order } from '../models/Order.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
 import { createNotificationHelper } from '../utils/notificationService.js';
+import { safeSearchTerm } from '../utils/regexUtils.js';
+import { pick } from '../utils/pick.js';
+
+const ORDER_FIELDS = ['orderNumber', 'customerName', 'email', 'phone', 'items', 'totalAmount', 'deliveryAddress', 'status', 'paymentStatus'];
 
 export const createOrder = async (req, res, next) => {
   try {
-    const order = await Order.create(req.body);
+    const order = await Order.create(pick(req.body, ORDER_FIELDS));
     createNotificationHelper({
       title: 'New Order Placed',
       message: `Order ${order.orderNumber} placed by ${order.customerName} for ${order.totalAmount ? `$${order.totalAmount}` : ''}`,
@@ -30,7 +34,7 @@ export const getAllOrders = async (req, res, next) => {
     const query = {};
 
     if (search) {
-      const q = String(search);
+      const q = safeSearchTerm(search);
       query.$or = [
         { customerName: { $regex: q, $options: 'i' } },
         { email: { $regex: q, $options: 'i' } },
