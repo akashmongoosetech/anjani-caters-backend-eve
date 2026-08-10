@@ -8,6 +8,8 @@ const serviceSchema = new mongoose.Schema({
   image: { type: String },
   icon: { type: String },
   category: { type: String, default: 'Catering' },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null, index: true },
+  subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'SubCategory', default: null, index: true },
   featured: { type: Boolean, default: false },
   active: { type: Boolean, default: true },
   seoTitle: { type: String },

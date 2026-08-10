@@ -5,6 +5,7 @@ import http from 'http';
 import app from './app.js';
 import { connectDB } from './config/db.js';
 import { connectDb } from './services/databaseService.js';
+import { migrateServicesToCategories } from './services/serviceCategoryMigration.js';
 import { setupSocket } from './socket/index.js';
 import { seedAdmin } from './seeds/adminSeed.js';
 import { seedSettings } from './seeds/settingsSeed.js';
@@ -19,6 +20,7 @@ async function startServer() {
   if (dbConnected) {
     await seedAdmin();
     await seedSettings();
+    await migrateServicesToCategories();
   }
 
   const httpServer = http.createServer(app);
