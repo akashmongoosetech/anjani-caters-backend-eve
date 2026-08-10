@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Contact } from '../models/Contact.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
@@ -123,6 +124,47 @@ export const deleteContact = async (req, res, next) => {
     const deleted = await Contact.findByIdAndDelete(id);
     if (!deleted) return next(new ApiError(404, 'Contact not found'));
     return res.status(200).json(new ApiResponse(200, { id }, 'Contact deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteContactsBulk = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'ids must be a non-empty array'));
+    }
+    const MAX_BULK_DELETE = 500;
+    if (ids.length > MAX_BULK_DELETE) {
+      return res.status(400).json(new ApiResponse(400, null, `Cannot delete more than ${MAX_BULK_DELETE} contacts at once`));
+    }
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'No valid contact ids provided'));
+    }
+    const result = await Contact.deleteMany({ _id: { $in: validIds } });
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'Contacts deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAllContacts = async (req, res, next) => {
+  try {
+    const { search, status } = req.query;
+    const query = {};
+    if (search) {
+      const q = safeSearchTerm(search);
+      query.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { message: { $regex: q, $options: 'i' } },
+      ];
+    }
+    if (status && status !== 'All') query.status = status;
+    const result = await Contact.deleteMany(query);
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'All matching contacts deleted successfully'));
   } catch (error) {
     next(error);
   }

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Notification } from '../models/Notification.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
@@ -151,6 +152,98 @@ export const deleteNotification = async (req, res, next) => {
     const unreadCount = await Notification.countDocuments({ isDeleted: { $ne: true }, readStatus: false });
 
     return res.status(200).json(new ApiResponse(200, { id, unreadCount }, 'Notification deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Bulk Soft-Delete Notifications by IDs
+ */
+export const deleteNotificationsBulk = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'ids must be a non-empty array'));
+    }
+
+    const MAX_BULK_DELETE = 500;
+    if (ids.length > MAX_BULK_DELETE) {
+      return res.status(400).json(new ApiResponse(400, null, `Cannot delete more than ${MAX_BULK_DELETE} notifications at once`));
+    }
+
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'No valid notification ids provided'));
+    }
+
+    const result = await Notification.updateMany(
+      { _id: { $in: validIds }, isDeleted: { $ne: true } },
+      { $set: { isDeleted: true } }
+    );
+
+    const unreadCount = await Notification.countDocuments({ isDeleted: { $ne: true }, readStatus: false });
+
+    return res.status(200).json(
+      new ApiResponse(200, { deletedCount: result.modifiedCount, unreadCount }, 'Notifications deleted successfully')
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Soft-Delete All Notifications Matching Current Visibility Filters
+ */
+export const deleteAllNotifications = async (req, res, next) => {
+  try {
+    const {
+      search,
+      type,
+      priority,
+      readStatus,
+      startDate,
+      endDate
+    } = req.query;
+
+    const query = { isDeleted: { $ne: true } };
+
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { message: { $regex: search, $options: 'i' } },
+        { type: { $regex: search, $options: 'i' } },
+        { relatedRecordId: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (type) query.type = new RegExp(`^${type}$`, 'i');
+    if (priority) query.priority = new RegExp(`^${priority}$`, 'i');
+    if (readStatus !== undefined && readStatus !== '') {
+      query.readStatus = String(readStatus) === 'true';
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    const result = await Notification.updateMany(
+      query,
+      { $set: { isDeleted: true } }
+    );
+
+    const unreadCount = await Notification.countDocuments({ isDeleted: { $ne: true }, readStatus: false });
+
+    return res.status(200).json(
+      new ApiResponse(200, { deletedCount: result.modifiedCount, unreadCount }, 'All matching notifications deleted successfully')
+    );
   } catch (error) {
     next(error);
   }

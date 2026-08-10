@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
@@ -99,6 +100,48 @@ export const deleteOrder = async (req, res, next) => {
     const deleted = await Order.findByIdAndDelete(id);
     if (!deleted) return next(new ApiError(404, 'Order not found'));
     return res.status(200).json(new ApiResponse(200, { id }, 'Order deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteOrdersBulk = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'ids must be a non-empty array'));
+    }
+    const MAX_BULK_DELETE = 500;
+    if (ids.length > MAX_BULK_DELETE) {
+      return res.status(400).json(new ApiResponse(400, null, `Cannot delete more than ${MAX_BULK_DELETE} orders at once`));
+    }
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'No valid order ids provided'));
+    }
+    const result = await Order.deleteMany({ _id: { $in: validIds } });
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'Orders deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAllOrders = async (req, res, next) => {
+  try {
+    const { search, status, paymentStatus } = req.query;
+    const query = {};
+    if (search) {
+      const q = safeSearchTerm(search);
+      query.$or = [
+        { customerName: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { orderNumber: { $regex: q, $options: 'i' } },
+      ];
+    }
+    if (status && status !== 'All') query.status = status;
+    if (paymentStatus) query.paymentStatus = paymentStatus;
+    const result = await Order.deleteMany(query);
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'All matching orders deleted successfully'));
   } catch (error) {
     next(error);
   }

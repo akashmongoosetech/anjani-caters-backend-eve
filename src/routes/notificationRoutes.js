@@ -5,6 +5,8 @@ import {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  deleteNotificationsBulk,
+  deleteAllNotifications,
   createNotificationApi
 } from '../controllers/notificationController.js';
 import { protect } from '../middlewares/authMiddleware.js';
@@ -20,6 +22,8 @@ router.get('/unread-count', getUnreadCount);
 router.post('/', createNotificationApi);
 router.patch('/mark-all-read', markAllAsRead);
 router.patch('/:id/read', markAsRead);
+router.delete('/bulk-delete', deleteNotificationsBulk);
+router.delete('/delete-all', deleteAllNotifications);
 router.delete('/:id', deleteNotification);
 
 export default router;

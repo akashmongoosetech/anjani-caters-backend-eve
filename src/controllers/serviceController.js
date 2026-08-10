@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Service } from '../models/Service.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
@@ -85,6 +86,49 @@ export const deleteService = async (req, res, next) => {
     const { id } = req.params;
     await Service.findByIdAndDelete(id);
     return res.status(200).json(new ApiResponse(200, { id }, 'Service deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteServicesBulk = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'ids must be a non-empty array'));
+    }
+    const MAX_BULK_DELETE = 500;
+    if (ids.length > MAX_BULK_DELETE) {
+      return res.status(400).json(new ApiResponse(400, null, `Cannot delete more than ${MAX_BULK_DELETE} services at once`));
+    }
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'No valid service ids provided'));
+    }
+    const result = await Service.deleteMany({ _id: { $in: validIds } });
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'Services deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAllServices = async (req, res, next) => {
+  try {
+    const { search, category, featured, active } = req.query;
+    const query = {};
+    if (search) {
+      const q = safeSearchTerm(search);
+      query.$or = [
+        { title: { $regex: q, $options: 'i' } },
+        { shortDescription: { $regex: q, $options: 'i' } },
+        { category: { $regex: q, $options: 'i' } },
+      ];
+    }
+    if (category && category !== 'All') query.category = category;
+    if (featured !== undefined && featured !== '') query.featured = featured === 'true';
+    if (active !== undefined && active !== '') query.active = active === 'true';
+    const result = await Service.deleteMany(query);
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'All matching services deleted successfully'));
   } catch (error) {
     next(error);
   }

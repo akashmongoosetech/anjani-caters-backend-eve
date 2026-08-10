@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { MenuItem } from '../models/MenuItem.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
@@ -152,6 +153,65 @@ export const deleteMenuItem = async (req, res, next) => {
     }
 
     return res.status(200).json(new ApiResponse(200, { id }, 'Dish deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteMenuItemsBulk = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'ids must be a non-empty array'));
+    }
+    const MAX_BULK_DELETE = 500;
+    if (ids.length > MAX_BULK_DELETE) {
+      return res.status(400).json(new ApiResponse(400, null, `Cannot delete more than ${MAX_BULK_DELETE} menu items at once`));
+    }
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'No valid menu item ids provided'));
+    }
+    const result = await MenuItem.deleteMany({ _id: { $in: validIds } });
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'Menu items deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAllMenuItems = async (req, res, next) => {
+  try {
+    const {
+      search,
+      category,
+      cuisine,
+      dietary,
+      status,
+      featured,
+      popular,
+      chefSpecial
+    } = req.query;
+
+    const filter = {};
+    if (search) {
+      const q = String(search);
+      filter.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { category: { $regex: q, $options: 'i' } },
+        { cuisine: { $regex: q, $options: 'i' } },
+        { description: { $regex: q, $options: 'i' } },
+      ];
+    }
+    if (category && category !== 'All') filter.category = category;
+    if (cuisine && cuisine !== 'All') filter.cuisine = cuisine;
+    if (dietary && dietary !== 'All') filter.dietary = dietary;
+    if (status && status !== 'All') filter.status = status;
+    if (featured !== undefined && featured !== '') filter.featured = String(featured) === 'true';
+    if (popular !== undefined && popular !== '') filter.popular = String(popular) === 'true';
+    if (chefSpecial !== undefined && chefSpecial !== '') filter.chefSpecial = String(chefSpecial) === 'true';
+
+    const result = await MenuItem.deleteMany(filter);
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'All matching menu items deleted successfully'));
   } catch (error) {
     next(error);
   }

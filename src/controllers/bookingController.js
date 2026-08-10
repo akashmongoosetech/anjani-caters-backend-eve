@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Booking } from '../models/Booking.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
@@ -144,6 +145,59 @@ export const deleteBooking = async (req, res, next) => {
     const deleted = await Booking.findByIdAndDelete(id);
     if (!deleted) return next(new ApiError(404, 'Booking not found'));
     return res.status(200).json(new ApiResponse(200, { id }, 'Booking deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteBookingsBulk = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'ids must be a non-empty array'));
+    }
+    const MAX_BULK_DELETE = 500;
+    if (ids.length > MAX_BULK_DELETE) {
+      return res.status(400).json(new ApiResponse(400, null, `Cannot delete more than ${MAX_BULK_DELETE} bookings at once`));
+    }
+    const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+    if (validIds.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, 'No valid booking ids provided'));
+    }
+    const result = await Booking.deleteMany({ _id: { $in: validIds } });
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'Bookings deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAllBookings = async (req, res, next) => {
+  try {
+    const { search, status, eventType, startDate, endDate } = req.query;
+    const query = {};
+    if (search) {
+      const q = safeSearchTerm(search);
+      query.$or = [
+        { fullName: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { phone: { $regex: q, $options: 'i' } },
+        { bookingReference: { $regex: q, $options: 'i' } },
+        { eventType: { $regex: q, $options: 'i' } },
+      ];
+    }
+    if (status && status !== 'All') query.status = status;
+    if (eventType && eventType !== 'All') query.eventType = eventType;
+    if (startDate || endDate) {
+      query.eventDate = {};
+      if (startDate) query.eventDate.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.eventDate.$lte = end;
+      }
+    }
+    const result = await Booking.deleteMany(query);
+    return res.status(200).json(new ApiResponse(200, { deletedCount: result.deletedCount }, 'All matching bookings deleted successfully'));
   } catch (error) {
     next(error);
   }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { submitContact, getAllContacts, getContactById, updateContactStatus, deleteContact } from '../controllers/contactController.js';
+import { submitContact, getAllContacts, getContactById, updateContactStatus, deleteContact, deleteContactsBulk, deleteAllContacts } from '../controllers/contactController.js';
 import { contactValidation } from '../validators/contactValidator.js';
 import { validateRequest } from '../middlewares/validatorMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
@@ -19,6 +19,8 @@ router.post('/', contactSubmitLimiter, contactValidation, validateRequest, submi
 router.get('/', protect, getAllContacts);
 router.get('/:id', protect, getContactById);
 router.patch('/:id/status', protect, updateContactStatus);
+router.delete('/bulk-delete', protect, deleteContactsBulk);
+router.delete('/delete-all', protect, deleteAllContacts);
 router.delete('/:id', protect, deleteContact);
 
 export default router;

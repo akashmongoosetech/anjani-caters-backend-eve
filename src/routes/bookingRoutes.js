@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { 
   createBooking, getAllBookings, getBookingById, updateBooking, updateBookingStatus, deleteBooking,
+  deleteBookingsBulk, deleteAllBookings,
   getBookingAvailability, getAvailableSlotsForDate
 } from '../controllers/bookingController.js';
 import { bookingValidation } from '../validators/bookingValidator.js';
@@ -28,6 +29,8 @@ router.get('/', protect, getAllBookings);
 router.get('/:id', protect, getBookingById);
 router.put('/:id', protect, updateBooking);
 router.patch('/:id/status', protect, updateBookingStatus);
+router.delete('/bulk-delete', protect, deleteBookingsBulk);
+router.delete('/delete-all', protect, deleteAllBookings);
 router.delete('/:id', protect, deleteBooking);
 
 export default router;
