@@ -16,6 +16,28 @@ export const getTestimonials = async (req, res, next) => {
   }
 };
 
+export const getAllTestimonials = async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const filter = status && ['Pending', 'Approved', 'Rejected'].includes(status.trim()) ? { status: status.trim() } : {};
+    const list = await Testimonial.find(filter).sort({ createdAt: -1 }).lean();
+    return res.status(200).json(new ApiResponse(200, list, 'Testimonials retrieved'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTestimonialById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const testimonial = await Testimonial.findById(id).lean();
+    if (!testimonial) return next(new ApiError(404, 'Testimonial not found'));
+    return res.status(200).json(new ApiResponse(200, testimonial, 'Testimonial retrieved'));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const submitTestimonial = async (req, res, next) => {
   try {
     const rating = Math.min(5, Math.max(1, parseInt(req.body.rating) || 5));
@@ -25,6 +47,7 @@ export const submitTestimonial = async (req, res, next) => {
       city: (req.body.city || '').trim(),
       eventType: (req.body.eventType || '').trim(),
       comment: (req.body.comment || '').trim(),
+      avatar: (req.body.avatar || '').trim(),
       rating,
       status: 'Pending'
     });
@@ -85,6 +108,18 @@ export const updateTestimonial = async (req, res, next) => {
     const updated = await Testimonial.findByIdAndUpdate(id, body, { new: true, runValidators: true });
     if (!updated) return next(new ApiError(404, 'Testimonial not found'));
     return res.status(200).json(new ApiResponse(200, updated, 'Testimonial updated successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTestimonialStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const updated = await Testimonial.findByIdAndUpdate(id, { status: status.trim() }, { new: true, runValidators: true });
+    if (!updated) return next(new ApiError(404, 'Testimonial not found'));
+    return res.status(200).json(new ApiResponse(200, updated, `Testimonial ${status.toLowerCase()} successfully`));
   } catch (error) {
     next(error);
   }
