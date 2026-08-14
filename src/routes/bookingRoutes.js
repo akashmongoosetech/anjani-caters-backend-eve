@@ -8,6 +8,7 @@ import {
 import { bookingValidation } from '../validators/bookingValidator.js';
 import { validateRequest } from '../middlewares/validatorMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/roleMiddleware.js';
 
 const router = Router();
 
@@ -24,13 +25,13 @@ router.get('/availability', getBookingAvailability);
 router.get('/slots', getAvailableSlotsForDate);
 router.post('/', bookingSubmitLimiter, bookingValidation, validateRequest, createBooking);
 
-// Protected routes for admin management
-router.get('/', protect, getAllBookings);
-router.get('/:id', protect, getBookingById);
-router.put('/:id', protect, updateBooking);
-router.patch('/:id/status', protect, updateBookingStatus);
-router.delete('/bulk-delete', protect, deleteBookingsBulk);
-router.delete('/delete-all', protect, deleteAllBookings);
-router.delete('/:id', protect, deleteBooking);
+// Protected routes for admin management (Super Admin, Admin, Manager only)
+router.get('/', protect, authorize('super_admin', 'admin', 'manager'), getAllBookings);
+router.get('/:id', protect, authorize('super_admin', 'admin', 'manager'), getBookingById);
+router.put('/:id', protect, authorize('super_admin', 'admin', 'manager'), updateBooking);
+router.patch('/:id/status', protect, authorize('super_admin', 'admin', 'manager'), updateBookingStatus);
+router.delete('/bulk-delete', protect, authorize('super_admin', 'admin', 'manager'), deleteBookingsBulk);
+router.delete('/delete-all', protect, authorize('super_admin', 'admin', 'manager'), deleteAllBookings);
+router.delete('/:id', protect, authorize('super_admin', 'admin', 'manager'), deleteBooking);
 
 export default router;

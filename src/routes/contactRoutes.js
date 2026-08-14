@@ -4,6 +4,7 @@ import { submitContact, getAllContacts, getContactById, updateContactStatus, del
 import { contactValidation } from '../validators/contactValidator.js';
 import { validateRequest } from '../middlewares/validatorMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/roleMiddleware.js';
 
 const router = Router();
 
@@ -16,11 +17,11 @@ const contactSubmitLimiter = rateLimit({
 });
 
 router.post('/', contactSubmitLimiter, contactValidation, validateRequest, submitContact);
-router.get('/', protect, getAllContacts);
-router.get('/:id', protect, getContactById);
-router.patch('/:id/status', protect, updateContactStatus);
-router.delete('/bulk-delete', protect, deleteContactsBulk);
-router.delete('/delete-all', protect, deleteAllContacts);
-router.delete('/:id', protect, deleteContact);
+router.get('/', protect, authorize('super_admin', 'admin', 'manager', 'staff'), getAllContacts);
+router.get('/:id', protect, authorize('super_admin', 'admin', 'manager', 'staff'), getContactById);
+router.patch('/:id/status', protect, authorize('super_admin', 'admin', 'manager', 'staff'), updateContactStatus);
+router.delete('/bulk-delete', protect, authorize('super_admin', 'admin', 'manager', 'staff'), deleteContactsBulk);
+router.delete('/delete-all', protect, authorize('super_admin', 'admin', 'manager', 'staff'), deleteAllContacts);
+router.delete('/:id', protect, authorize('super_admin', 'admin', 'manager', 'staff'), deleteContact);
 
 export default router;
