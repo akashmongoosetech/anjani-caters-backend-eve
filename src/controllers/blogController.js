@@ -8,6 +8,7 @@ function sanitizeTag(raw) {
 }
 
 function parseTags(input) {
+  if (!input) return [];
   if (Array.isArray(input)) {
     return input.map(sanitizeTag).filter(Boolean);
   }
