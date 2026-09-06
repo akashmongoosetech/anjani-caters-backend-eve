@@ -5,14 +5,14 @@ let transporter = null;
 export function getTransporter() {
   if (transporter) return transporter;
 
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const user = process.env.SMTP_USER || process.env.BREVO_SENDER_EMAIL || 'sales@anjanievents.in';
+  const pass = process.env.SMTP_PASS || process.env.BREVO_API_KEY;
   const port = Number(process.env.SMTP_PORT) || 587;
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
 
-  if (!host || !user || !pass) {
-    console.warn('[Email] SMTP not configured. Using streamTransport fallback.');
+  if (!pass) {
+    console.warn('[Email] Brevo API Key / SMTP Password not configured. Using streamTransport fallback.');
     transporter = nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',
@@ -43,40 +43,36 @@ function formatSmtpError(error) {
   return parts.join(' ');
 }
 
-function getSenderFrom() {
-  if (process.env.SMTP_FROM) {
-    if (process.env.SMTP_USER) {
-      const fromMatch = process.env.SMTP_FROM.match(/<([^>]+)>/);
-      const fromEmail = fromMatch ? fromMatch[1].trim().toLowerCase() : process.env.SMTP_FROM.trim().toLowerCase();
-      const smtpUser = process.env.SMTP_USER.trim().toLowerCase();
-      if (fromEmail && fromEmail !== smtpUser) {
-        console.warn(`[Email] SMTP_FROM address (${fromEmail}) does not match SMTP_USER (${process.env.SMTP_USER}); using SMTP_USER as sender.`);
-        return `"Anjani Catering & Events" <${process.env.SMTP_USER}>`;
-      }
-    }
-    return process.env.SMTP_FROM;
-  }
-  if (process.env.SMTP_USER) return `"Anjani Catering & Events" <${process.env.SMTP_USER}>`;
-  return '"Anjani Catering & Events" <sales@anjanievents.in>';
+function getSenderInfo() {
+  const email = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || 'sales@anjanievents.in';
+  const name = process.env.BREVO_SENDER_NAME || 'Anjani Events';
+  return { email, name };
+}
+
+function getReplyToInfo() {
+  const email = process.env.BREVO_REPLY_TO_EMAIL || process.env.BREVO_SENDER_EMAIL || 'sales@anjanievents.in';
+  const name = process.env.BREVO_REPLY_TO_NAME || 'Anjani Events';
+  return { email, name };
 }
 
 export function logSmtpHealth() {
-  const vars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'ADMIN_EMAIL'];
+  const vars = ['BREVO_API_KEY', 'BREVO_SENDER_EMAIL', 'SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'ADMIN_EMAIL'];
   vars.forEach((v) => {
     console.log(`[Email] Env ${v}: ${process.env[v] ? 'loaded' : 'MISSING'}`);
   });
 
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = Number(process.env.SMTP_PORT) || 587;
-  const mode = host && user && pass ? 'real SMTP' : 'streamTransport (emails NOT delivered)';
-  console.log(`[Email] Transport mode: ${mode} host=${host || '(none)'} port=${port} from=${getSenderFrom()}`);
-  if (mode === 'real SMTP') {
-    const t = getTransporter();
-    t.verify()
-      .then(() => console.log('[Email] SMTP health: verify() OK - credentials accepted by mail server.'))
-      .catch((err) => console.error(`[Email] SMTP health: verify() FAILED - ${formatSmtpError(err)}`));
+  const hasBrevoKey = !!process.env.BREVO_API_KEY;
+  const sender = getSenderInfo();
+  console.log(`[Email] Primary Provider: Brevo REST API (${hasBrevoKey ? 'Configured' : 'Missing API Key'}), Sender: ${sender.name} <${sender.email}>`);
+
+  if (hasBrevoKey) {
+    console.log('[Email] Brevo health: API Key present - ready for production dispatch.');
+  } else {
+    const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const mode = host && user && pass ? 'SMTP Relay' : 'streamTransport (simulation mode)';
+    console.log(`[Email] Fallback Mode: ${mode}`);
   }
 }
 
@@ -90,23 +86,74 @@ function escapeHtml(unsafe) {
     .replace(/'/g, '&#039;');
 }
 
+/**
+ * Core dispatch function using Brevo REST API with automatic Nodemailer SMTP fallback
+ */
 export async function sendMail({ to, subject, html, text }) {
   const cleanTo = String(to || '').replace(/[\r\n]/g, '').trim();
-  console.log(`[EMAIL] Sending -> ${cleanTo} | Subject: "${subject}"`);
+  const cleanSubject = String(subject || '').replace(/[\r\n]/g, '').trim();
+  const sender = getSenderInfo();
+  const replyTo = getReplyToInfo();
+
+  console.log(`[EMAIL] Dispatching -> ${cleanTo} | Subject: "${cleanSubject}" (Sender: ${sender.email})`);
+
+  // Try Brevo REST API first if BREVO_API_KEY is available
+  const brevoApiKey = process.env.BREVO_API_KEY;
+  if (brevoApiKey && brevoApiKey !== 'YOUR_BREVO_API_KEY_HERE') {
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': brevoApiKey,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: { name: sender.name, email: sender.email },
+          to: [{ email: cleanTo }],
+          replyTo: { name: replyTo.name, email: replyTo.email },
+          subject: cleanSubject,
+          htmlContent: html,
+          textContent: text || 'Thank you for choosing Anjani Events.'
+        })
+      });
+
+      const responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(responseData.message || responseData.error || `Brevo HTTP error status: ${response.status}`);
+      }
+
+      console.log(`[BREVO SUCCESS] Message ID: ${responseData.messageId || 'sent'} -> ${cleanTo} | Subject: "${cleanSubject}"`);
+      return { success: true, messageId: responseData.messageId || 'brevo-api-success' };
+    } catch (brevoErr) {
+      console.warn(`[BREVO API WARNING] Brevo API failed (${brevoErr.message}).`);
+      if (brevoErr.message.includes('unrecognised IP address') || brevoErr.message.includes('IP')) {
+        console.warn(`[BREVO NOTICE] To fix IP restriction, authorize your current IP address in your Brevo Dashboard under: https://app.brevo.com/security/authorised_ips (or disable IP restrictions in Brevo).`);
+      }
+      console.warn(`[BREVO NOTICE] Falling back to SMTP transport...`);
+    }
+  }
+
+  // Fallback to Nodemailer SMTP / streamTransport
   try {
     const mailTransporter = getTransporter();
-    const from = getSenderFrom();
+    const fromStr = `"${sender.name}" <${sender.email}>`;
     const info = await mailTransporter.sendMail({
-      from,
+      from: fromStr,
       to: cleanTo,
-      subject,
+      subject: cleanSubject,
       html,
-      text: text || 'Thank you for contacting Anjani Catering & Events.'
+      text: text || 'Thank you for choosing Anjani Events.'
     });
-    console.log(`[EMAIL SUCCESS] Message ID: ${info.messageId} -> ${cleanTo} | Subject: "${subject}"`);
+
+    console.log(`[SMTP SUCCESS] Message ID: ${info.messageId} -> ${cleanTo} | Subject: "${cleanSubject}"`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`[EMAIL FAILED] -> ${cleanTo} | Subject: "${subject}" | ${formatSmtpError(error)}`);
+    console.error(`[EMAIL FAILED] -> ${cleanTo} | Subject: "${cleanSubject}" | ${formatSmtpError(error)}`);
+    if (error.message && (error.message.includes('Authentication failed') || error.message.includes('535'))) {
+      console.error(`[SMTP NOTICE] Authentication failed (535). Please ensure SMTP_PASS in backend/.env is your dedicated Brevo SMTP password / SMTP key, NOT your v3 API key (xkeysib-...). You can generate a Brevo SMTP key in your Brevo Dashboard under SMTP & API settings.`);
+    }
     return { success: false, error: error.message };
   }
 }
@@ -186,8 +233,6 @@ export async function sendContactAckEmail(contactData) {
   });
   return sendMail({ to: contactData.email, subject, html });
 }
-
-// --- Frontend merged rich template system ---
 
 function generateHtmlTemplate({ customerName, subject, mainTitle, mainMessage, summaryFields, nextSteps, ctaText = 'Visit Our Website', ctaUrl = 'https://anjanievents.in', socials = [] }) {
   const summaryRowsHtml = summaryFields
@@ -299,40 +344,16 @@ function generateHtmlTemplate({ customerName, subject, mainTitle, mainMessage, s
     </html>`;
 }
 
-async function safeSendMail(to, subject, html, formType) {
-  const cleanTo = String(to || '').replace(/[\r\n]/g, '').trim();
-  console.log(`[EMAIL] Sending [${formType}] -> ${cleanTo} | Subject: "${subject}"`);
-  try {
-    const cleanSubject = String(subject || '').replace(/[\r\n]/g, '').trim();
-
-    const transporter = getTransporter();
-    const from = getSenderFrom();
-
-    const info = await transporter.sendMail({ from, to: cleanTo, subject: cleanSubject, html });
-
-    if (transporter.options && transporter.options.streamTransport) {
-      console.log(`[EMAIL SIMULATION] Subject: "${cleanSubject}"`);
-      console.log(`[EMAIL SIMULATION] Sent to: ${cleanTo}`);
-    }
-
-    console.log(`[EMAIL SUCCESS] [${formType}] Message ID: ${info.messageId} -> ${cleanTo}`);
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error(`[EMAIL FAILED] [${formType}] -> ${cleanTo} | ${formatSmtpError(error)}`);
-    return { success: false, error: error.message };
-  }
-}
-
 export async function sendBookingConfirmation(data) {
   const subject = "We've Received Your Catering Inquiry";
-  const mainMessage = 'Thank you for your catering booking request. Our team has received your date details and event hold requirements. Sarah, our coordinating banquet manager, will check the slot availability and finalize your custom package details shortly.';
+  const mainMessage = "Thank you for your catering booking request. Our team has received your date details and event hold requirements. Sarah, our coordinating banquet manager, will check the slot availability and finalize your custom package details shortly.";
   const summaryFields = [{ label: 'Name', value: data.name }, { label: 'Email', value: data.email }, { label: 'Selected Date', value: data.date }];
   if (data.notes) summaryFields.push({ label: 'Special Notes', value: data.notes });
   const html = generateHtmlTemplate({
     customerName: data.name, subject, mainTitle: 'Thank you for your catering inquiry', mainMessage, summaryFields,
     nextSteps: ['We will verify schedule openings for your requested date in our calendar.', 'A catering representative will reach out to outline culinary themes and finalize guests ratio.', 'We will schedule an exclusive tasting session at our gourmet kitchen.', 'We will lock in the pre-hold once a formal deposit is authorized.']
   });
-  return safeSendMail(data.email, subject, html, 'Booking Form');
+  return sendMail({ to: data.email, subject, html });
 }
 
 export async function sendOrderConfirmation(data) {
@@ -347,7 +368,7 @@ export async function sendOrderConfirmation(data) {
     customerName: data.name, subject, mainTitle: 'Catering Order Request Received', mainMessage, summaryFields,
     nextSteps: ['Our Master Chefs will verify standard ingredient prep pipelines for your selection.', 'An invoice coordinator will call you to authorize payment options.', 'Your live food counters or service staff staffing assignments will be confirmed.', 'A fresh, hot gourmet delivery plan or silver-service setup timeline will be locked in.']
   });
-  return safeSendMail(data.email, subject, html, 'Order Form');
+  return sendMail({ to: data.email, subject, html });
 }
 
 export async function sendChatbotBookingConfirmation(data) {
@@ -369,7 +390,7 @@ export async function sendChatbotBookingConfirmation(data) {
     customerName: data.name, subject, mainTitle: 'Thank you for using our AI Catering Assistant', mainMessage, summaryFields,
     nextSteps: ['Our culinary team will review the cuisine, portion weights, and layout options you shared.', 'Sarah, our coordinating event coordinator, will verify logistics for your venue location.', 'A custom menu proposal matching your specific budget and dietary rules will be designed.', 'We will coordinate a final phone consultation or schedule a private kitchen visit.']
   });
-  return safeSendMail(data.email, subject, html, 'Chatbot Booking');
+  return sendMail({ to: data.email, subject, html });
 }
 
 export async function sendProductInquiryConfirmation(data) {
@@ -381,7 +402,7 @@ export async function sendProductInquiryConfirmation(data) {
     customerName: data.name, subject, mainTitle: 'Menu Customization Inquiry Received', mainMessage, summaryFields,
     nextSteps: ['Our kitchen coordinators will review spice limits and Jain/Vegetarian rules for these dishes.', 'We will check seasonal availability of special ingredients.', 'We will outline customized live-station configurations for your event theme.']
   });
-  return safeSendMail(data.email, subject, html, 'Product Inquiry');
+  return sendMail({ to: data.email, subject, html });
 }
 
 export async function sendQuoteRequestConfirmation(data) {
@@ -395,7 +416,7 @@ export async function sendQuoteRequestConfirmation(data) {
     customerName: data.name, subject, mainTitle: 'Bespoke Quote Proposal Initialized', mainMessage, summaryFields,
     nextSteps: ['We will evaluate direct wait-staff, mixologists, and layout costs for your volume.', 'We will prepare an elegant, itemized pricing breakdown for food and rentals.', 'We will call you to optimize menu course sequences and adjust price estimates.']
   });
-  return safeSendMail(data.email, subject, html, 'Quote Request');
+  return sendMail({ to: data.email, subject, html });
 }
 
 export async function sendNewsletterConfirmation(email) {
@@ -406,7 +427,7 @@ export async function sendNewsletterConfirmation(email) {
     summaryFields: [{ label: 'Subscriber Email', value: email }],
     nextSteps: ['Keep an eye out for our monthly newsletter issue detailing seasonal menu shifts.', 'Receive exclusive early notifications of private chef tasting events.', 'Gain access to special private discount vouchers for your future catering reservations.']
   });
-  return safeSendMail(email, subject, html, 'Newsletter Signup');
+  return sendMail({ to: email, subject, html });
 }
 
 export async function sendWelcomeEmail(userData, plainPassword) {
@@ -461,7 +482,7 @@ export async function sendPasswordResetOtp(userData, otp) {
     ctaText: 'Log In to Admin Panel',
     ctaUrl: loginUrl
   });
-  return safeSendMail(email, subject, html, 'Password Reset OTP');
+  return sendMail({ to: email, subject, html });
 }
 
 export async function sendPasswordResetEmail(userData, newPassword) {
@@ -490,7 +511,7 @@ export async function sendPasswordResetEmail(userData, newPassword) {
 }
 
 export async function sendAdminNotification(formType, data) {
-  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.BUSINESS_EMAIL || 'sales@anjanievents.in';
   if (!adminEmail) return { success: true, bypassed: true };
 
   const cleanAdmin = adminEmail.replace(/[\r\n]/g, '').trim();
@@ -505,14 +526,10 @@ export async function sendAdminNotification(formType, data) {
       </tr>`)
       .join('');
     const html = `<!DOCTYPE html><html><body style="font-family: Arial, sans-serif; background-color: #FDFBF7; padding: 25px; color: #1A1A1A;"><div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #EAE5DB; border-radius: 12px; overflow: hidden; padding: 25px;"><h2 style="color: #1F3E29; border-bottom: 2px solid #D49A5B; padding-bottom: 10px; margin-top: 0;">New Form Submission Alerts</h2><p style="font-size: 13px;">A customer has submitted details on the <strong>${formType}</strong> of the website.</p><table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #F7F4EE;">${tableRows}</table><p style="font-size: 11px; color: #555555;">This is an automated system dispatch. Anjani Catering & Events Back-End Control Panel.</p></div></body></html>`;
-    const cleanSubject = subject.replace(/[\r\n]/g, '').trim();
-    const transporter = getTransporter();
-    const from = getSenderFrom();
-    await transporter.sendMail({ from, to: cleanAdmin, subject: cleanSubject, html });
-    console.log(`[EMAIL SUCCESS] Admin notice [${formType}] -> ${cleanAdmin}`);
-    return { success: true };
+    
+    return sendMail({ to: cleanAdmin, subject, html });
   } catch (error) {
-    console.error(`[EMAIL FAILED] Admin notification [${formType}] -> ${cleanAdmin} | ${formatSmtpError(error)}`);
+    console.error(`[EMAIL FAILED] Admin notification [${formType}] -> ${cleanAdmin} | ${error.message}`);
     return { success: false, error: error.message };
   }
 }
