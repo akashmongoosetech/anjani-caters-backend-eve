@@ -32,6 +32,7 @@ app.use('/api', limiter);
 // Security and utility Middlewares
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
