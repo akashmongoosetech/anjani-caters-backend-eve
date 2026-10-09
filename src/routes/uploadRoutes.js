@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { upload, uploadPublic } from '../middlewares/uploadMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { authorize } from '../middlewares/roleMiddleware.js';
 import { uploadMedia, uploadPublicMedia } from '../controllers/uploadController.js';
 
 const router = Router();
@@ -15,7 +16,7 @@ const publicUploadLimiter = rateLimit({
   message: { success: false, message: 'Too many public uploads, please try again later.' }
 });
 
-router.post('/', protect, upload.single('file'), uploadMedia);
+router.post('/', protect, authorize('super_admin', 'admin', 'manager'), upload.single('file'), uploadMedia);
 router.post('/public', publicUploadLimiter, uploadPublic.single('file'), uploadPublicMedia);
 
 export default router;

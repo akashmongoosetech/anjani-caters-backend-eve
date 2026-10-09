@@ -1,5 +1,21 @@
 import { Settings } from '../models/Settings.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { ApiError } from '../utils/apiError.js';
+import { pick } from '../utils/pick.js';
+
+// Only schema-known fields may be written — never raw req.body (mass assignment).
+const SETTINGS_FIELDS = [
+  'companyName', 'companyEmail', 'companyPhone', 'companyAddress',
+  'siteTitle', 'siteDescription', 'siteKeywords', 'siteLogo', 'favicon',
+  'facebookUrl', 'instagramUrl', 'linkedinUrl', 'youtubeUrl',
+  'googleVerification', 'bingVerification', 'googleAnalyticsId', 'googleTagManagerId',
+  'facebookPixelId', 'microsoftClarityId',
+  'ogImage', 'twitterImage',
+  'robotsContent', 'canonicalDomain',
+  'businessHours', 'latitude', 'longitude', 'serviceArea',
+  'taxRate', 'bookingDepositPercentage',
+  'notificationsEnabled', 'autoReplyEnabled', 'commentModeration'
+];
 
 const defaultSettings = {
   companyName: 'Anjani Catering & Events',
@@ -48,7 +64,21 @@ export const getSettings = async (req, res, next) => {
 
 export const updateSettings = async (req, res, next) => {
   try {
-    const payload = req.body;
+    const payload = pick(req.body || {}, SETTINGS_FIELDS);
+
+    if (payload.taxRate !== undefined && (typeof payload.taxRate !== 'number' || payload.taxRate < 0 || payload.taxRate > 100)) {
+      return next(new ApiError(400, 'taxRate must be a number between 0 and 100'));
+    }
+    if (payload.bookingDepositPercentage !== undefined && (typeof payload.bookingDepositPercentage !== 'number' || payload.bookingDepositPercentage < 0 || payload.bookingDepositPercentage > 100)) {
+      return next(new ApiError(400, 'bookingDepositPercentage must be a number between 0 and 100'));
+    }
+    if (payload.latitude !== undefined && (typeof payload.latitude !== 'number' || payload.latitude < -90 || payload.latitude > 90)) {
+      return next(new ApiError(400, 'latitude must be a number between -90 and 90'));
+    }
+    if (payload.longitude !== undefined && (typeof payload.longitude !== 'number' || payload.longitude < -180 || payload.longitude > 180)) {
+      return next(new ApiError(400, 'longitude must be a number between -180 and 180'));
+    }
+
     let settings = await Settings.findOneAndUpdate({}, payload, { new: true, upsert: true, runValidators: true }).lean().catch(() => null);
     if (!settings) {
       settings = { ...defaultSettings, ...payload };

@@ -2,11 +2,21 @@ import { saveContactInquiry, saveCalendarBooking, saveCateringOrder } from '../s
 import { sendContactAckEmail, sendBookingConfirmation, sendOrderConfirmation, sendProductInquiryConfirmation, sendQuoteRequestConfirmation } from '../utils/emailService.js';
 import { createNotificationHelper } from '../utils/notificationService.js';
 
-export async function submitContactInquiry(req, res) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidUtilityEmail(value) {
+  return typeof value === 'string' && value.length <= 254 && EMAIL_RE.test(value.trim());
+}
+
+function isValidUtilityText(value, max) {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+}
+
+export async function submitContactInquiry(req, res, next) {
   try {
     const { name, email, phone, eventDate, guests, message, formType, productName, eventType } = req.body;
-    if (!name || !email || !message) {
-      return res.status(400).json({ error: 'Name, email, and message are required fields.' });
+    if (!isValidUtilityText(name, 120) || !isValidUtilityEmail(email) || !isValidUtilityText(message, 5000)) {
+      return res.status(400).json({ error: 'Name, a valid email, and a message (max 5000 chars) are required fields.' });
     }
 
     const contactData = { name, email, phone, eventDate, guests: guests ? String(guests) : undefined, message };
@@ -49,16 +59,18 @@ export async function submitContactInquiry(req, res) {
 
     return res.status(201).json({ success: true, inquiry: saved });
   } catch (error) {
-    console.error('Error saving contact inquiry:', error);
-    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+    return next(error);
   }
 }
 
-export async function submitCalendarBooking(req, res) {
+export async function submitCalendarBooking(req, res, next) {
   try {
     const { name, email, date, notes } = req.body;
-    if (!name || !email || !date) {
-      return res.status(400).json({ error: 'Name, email, and date are required fields.' });
+    if (!isValidUtilityText(name, 120) || !isValidUtilityEmail(email) || !isValidUtilityText(date, 60)) {
+      return res.status(400).json({ error: 'Name, a valid email, and date are required fields.' });
+    }
+    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 2000)) {
+      return res.status(400).json({ error: 'Notes must be at most 2000 characters.' });
     }
 
     const bookingData = { name, email, date, notes };
@@ -82,16 +94,15 @@ export async function submitCalendarBooking(req, res) {
 
     return res.status(201).json({ success: true, booking: saved });
   } catch (error) {
-    console.error('Error saving calendar booking:', error);
-    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+    return next(error);
   }
 }
 
-export async function submitCateringOrder(req, res) {
+export async function submitCateringOrder(req, res, next) {
   try {
     const { name, email, phone, address, serviceName, orderItems, total } = req.body;
-    if (!name || !email || !serviceName) {
-      return res.status(400).json({ error: 'Name, email, and serviceName are required fields.' });
+    if (!isValidUtilityText(name, 120) || !isValidUtilityEmail(email) || !isValidUtilityText(serviceName, 200)) {
+      return res.status(400).json({ error: 'Name, a valid email, and serviceName are required fields.' });
     }
 
     const orderData = { name, email, phone, address, serviceName, orderItems, total };
@@ -115,7 +126,6 @@ export async function submitCateringOrder(req, res) {
 
     return res.status(201).json({ success: true, order: saved });
   } catch (error) {
-    console.error('Error saving catering order:', error);
-    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+    return next(error);
   }
 }

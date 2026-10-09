@@ -7,6 +7,7 @@ import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
 import { ROLES } from '../constants/roles.js';
 import { sendPasswordResetOtp } from '../utils/emailService.js';
+import { pick } from '../utils/pick.js';
 
 function dbIsConnected() {
   return mongoose.connection.readyState === 1;
@@ -17,6 +18,17 @@ function requireDb() {
     return new ApiError(503, 'Database not connected. Please try again later.');
   }
   return null;
+}
+
+function authCookieOptions() {
+  const isProd = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // matches default JWT_EXPIRES_IN=7d
+    path: '/',
+  };
 }
 
 export const register = async (req, res, next) => {
@@ -42,7 +54,7 @@ export const register = async (req, res, next) => {
       role: userRole,
       profilePicture,
       verified: true,
-      permissions: ['all']
+      permissions: []
     });
 
     const token = generateToken({
@@ -52,7 +64,7 @@ export const register = async (req, res, next) => {
       name: newUser.name
     });
 
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+    res.cookie('token', token, authCookieOptions());
 
     return res.status(201).json(new ApiResponse(201, {
       token,
@@ -109,7 +121,7 @@ export const login = async (req, res, next) => {
       name: user.name
     });
 
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+    res.cookie('token', token, authCookieOptions());
 
     return res.status(200).json(new ApiResponse(200, {
       token,
@@ -160,7 +172,14 @@ export const updateProfile = async (req, res, next) => {
   try {
     const dbErr = requireDb(); if (dbErr) return next(dbErr);
 
-    const body = { ...req.body };
+    const body = pick(req.body, [
+      'firstName',
+      'lastName',
+      'name',
+      'email',
+      'mobile',
+      'profilePicture',
+    ]);
     if (body.email) body.email = body.email.trim().toLowerCase();
     if (body.firstName || body.lastName) {
       body.name = `${body.firstName || ''} ${body.lastName || ''}`.trim();
@@ -214,7 +233,7 @@ export const forgotPassword = async (req, res, next) => {
     const codeHash = await hashPassword(code);
     await User.updateOne(
       { _id: user._id },
-      { $set: { otpReset: { codeHash, expiresAt: new Date(Date.now() + 10 * 60 * 1000) } } }
+      { $set: { otpReset: { codeHash, expiresAt: new Date(Date.now() + 10 * 60 * 1000), attempts: 0 } } }
     );
 
     sendPasswordResetOtp(user, code).catch((err) => {
@@ -246,18 +265,25 @@ export const resetPassword = async (req, res, next) => {
     }
 
     if (new Date(user.otpReset.expiresAt) < new Date()) {
+      await User.updateOne({ _id: user._id }, { $set: { otpReset: { codeHash: '', expiresAt: null, attempts: 0 } } });
       return next(new ApiError(400, 'This verification code has expired. Please request a new one.'));
+    }
+
+    if ((user.otpReset.attempts || 0) >= 5) {
+      await User.updateOne({ _id: user._id }, { $set: { otpReset: { codeHash: '', expiresAt: null, attempts: 0 } } });
+      return next(new ApiError(429, 'Too many incorrect attempts. Please request a new verification code.'));
     }
 
     const isCodeValid = await comparePassword(otp, user.otpReset.codeHash);
     if (!isCodeValid) {
+      await User.updateOne({ _id: user._id }, { $inc: { 'otpReset.attempts': 1 } });
       return next(new ApiError(400, 'Invalid verification code. Please check and try again.'));
     }
 
     const newPasswordHash = await hashPassword(newPassword);
     await User.updateOne(
       { _id: user._id },
-      { $set: { password: newPasswordHash, otpReset: { codeHash: '', expiresAt: null } } }
+      { $set: { password: newPasswordHash, otpReset: { codeHash: '', expiresAt: null, attempts: 0 } } }
     );
 
     return res.status(200).json(new ApiResponse(200, null, 'Password reset successfully.'));
@@ -298,6 +324,7 @@ export const changePassword = async (req, res, next) => {
 };
 
 export const logout = async (req, res) => {
-  res.clearCookie('token');
+  const opts = authCookieOptions();
+  res.clearCookie('token', { path: opts.path, sameSite: opts.sameSite, secure: opts.secure, httpOnly: true });
   return res.status(200).json(new ApiResponse(200, null, 'Logged out successfully'));
 };

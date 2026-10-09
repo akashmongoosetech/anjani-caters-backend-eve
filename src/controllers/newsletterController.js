@@ -17,7 +17,7 @@ export const getSubscribers = async (req, res, next) => {
     if (source && source !== 'All') filter.source = source;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
 
     const [items, total] = await Promise.all([
       Newsletter.find(filter)

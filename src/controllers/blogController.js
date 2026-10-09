@@ -81,7 +81,7 @@ export const getBlogs = async (req, res, next) => {
     if (sortBy === 'title') sortOptions = { title: 1 };
 
     const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 10;
+    const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
     const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([

@@ -10,7 +10,8 @@ const PROJECT_FIELDS = [
 
 export const getProjects = async (req, res, next) => {
   try {
-    const projects = await Project.find().sort({ createdAt: -1 }).lean();
+    const limitNum = Math.min(Math.max(parseInt(req.query.limit) || 100, 1), 100);
+    const projects = await Project.find().sort({ createdAt: -1 }).limit(limitNum).lean();
     return res.status(200).json(new ApiResponse(200, projects, 'Projects retrieved successfully'));
   } catch (error) {
     next(error);

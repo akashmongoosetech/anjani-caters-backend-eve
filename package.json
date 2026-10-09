@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "seed": "node src/seeds/seeder.js",
+    "seed:admin": "node src/seeds/superAdminSeed.js",
     "seed:services": "node seeders/servicesSeeder.js"
   },
   "dependencies": {

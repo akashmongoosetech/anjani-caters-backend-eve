@@ -18,7 +18,12 @@ const staticRoutes = [
   { loc: '/faqs', priority: '0.6', changefreq: 'monthly' },
   { loc: '/blogs', priority: '0.9', changefreq: 'daily' },
   { loc: '/contact', priority: '0.7', changefreq: 'monthly' },
-  { loc: '/booking', priority: '0.8', changefreq: 'monthly' }
+  { loc: '/booking', priority: '0.8', changefreq: 'monthly' },
+  { loc: '/privacy', priority: '0.3', changefreq: 'yearly' },
+  { loc: '/terms', priority: '0.3', changefreq: 'yearly' },
+  { loc: '/cookies', priority: '0.3', changefreq: 'yearly' },
+  { loc: '/refund', priority: '0.3', changefreq: 'yearly' },
+  { loc: '/disclaimer', priority: '0.3', changefreq: 'yearly' }
 ];
 
 export const getSitemap = async (req, res) => {
@@ -33,7 +38,7 @@ export const getSitemap = async (req, res) => {
     ${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}
   </url>`;
 
-    let urls = staticRoutes.map(r => xmlUrlWithBase({ ...r, loc: r.loc }));
+    let urls = staticRoutes.map(r => xmlUrlWithBase({ ...r, loc: r.loc, lastmod: new Date().toISOString() }));
 
     // Dynamic blog posts
     try {
@@ -61,9 +66,9 @@ export const getSitemap = async (req, res) => {
       });
     } catch (err) { console.warn('[Sitemap] Failed to fetch services:', err.message); }
 
-    // Dynamic projects
+    // Dynamic projects (cap to avoid huge responses)
     try {
-      const projects = await Project.find().select('slug updatedAt').lean();
+      const projects = await Project.find().select('slug updatedAt').limit(5000).lean();
       projects.forEach(proj => {
         urls.push(xmlUrlWithBase({
           loc: `/projects/${proj.slug}`,
@@ -75,14 +80,12 @@ export const getSitemap = async (req, res) => {
     } catch (err) { console.warn('[Sitemap] Failed to fetch projects:', err.message); }
 
     const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
-        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
-        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.join('\n')}
 </urlset>`;
 
     res.header('Content-Type', 'application/xml');
+    res.header('Cache-Control', 'public, max-age=3600');
     res.send(sitemap);
   } catch (error) {
     res.status(500).send('Error generating sitemap');

@@ -1,5 +1,52 @@
 import { GoogleGenAI } from '@google/genai';
 import { logAiMessage } from '../services/databaseService.js';
+import { ApiError } from '../utils/apiError.js';
+
+export const GEMINI_MODEL = 'gemini-2.0-flash';
+
+// Session logging must never turn a good AI reply into a 500.
+async function safeLogAiMessage(sessionId, message, clientName) {
+  if (!sessionId || !message) return;
+  try {
+    await logAiMessage(sessionId, message, clientName);
+  } catch (err) {
+    console.warn('[Gemini] Session log failed (reply still returned):', err.message);
+  }
+}
+
+function extractText(response) {
+  if (!response) return '';
+  if (typeof response.text === 'string') return response.text;
+  if (typeof response.text === 'function') {
+    try { return response.text() || ''; } catch { return ''; }
+  }
+  try {
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) return parts.map((p) => p?.text || '').join('');
+  } catch {}
+  return '';
+}
+
+function mapProviderError(error) {
+  const status = error?.status || error?.statusCode || error?.code;
+  const msg = String(error?.message || '');
+  if (status === 429 || /quota|rate.?limit|429|RESOURCE_EXHAUSTED/i.test(msg)) {
+    return new ApiError(429, 'AI service is busy (quota exceeded). Please try again in a little while.');
+  }
+  if (status === 401 || status === 403 || /API key|API_KEY|UNAUTHENTICATED|PERMISSION_DENIED|401|403/i.test(msg)) {
+    return new ApiError(502, 'AI provider authentication failed. Please check the GEMINI_API_KEY configuration.');
+  }
+  console.error('[Gemini] generateContent failed:', msg || error);
+  return new ApiError(502, 'AI service temporarily unavailable. Please try again shortly.');
+}
+
+export function logGeminiHealth() {
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY') {
+    console.log('[Gemini] API key configured.');
+  } else {
+    console.warn('[Gemini] GEMINI_API_KEY missing or placeholder — chat will use offline fallback.');
+  }
+}
 
 let aiClient = null;
 
@@ -45,12 +92,24 @@ Behavioral Guidelines:
 - Always remain exceptionally polite, welcoming, and helpful.
 - **IMPORTANT**: If the customer expresses booking intent, wants a quote, wants to place an order, or mentions an event details (e.g., "I want to book", "book a wedding", "need catering for 200 guests"), politely acknowledge their request and mention that you will open an instant, customized inquiry form right here in the chat to collect their exact details so the master chefs and event coordinators can prepare a precise quotation.`;
 
-export async function postGeminiChat(req, res) {
+// Cost/abuse caps for the public chat endpoint (each turn is a paid API call).
+const MAX_CHAT_MESSAGES = 30;
+const MAX_MESSAGE_CHARS = 4000;
+const MAX_TOOL_PROMPT_CHARS = 2000;
+
+export async function postGeminiChat(req, res, next) {
   try {
     const { messages, sessionId, clientName } = req.body;
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: "Invalid request. 'messages' array is required." });
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "Invalid request. A non-empty 'messages' array is required." });
     }
+    for (const msg of messages) {
+      if (!msg || typeof msg.content !== 'string' || msg.content.length === 0 || msg.content.length > MAX_MESSAGE_CHARS) {
+        return res.status(400).json({ error: `Each message must have text content of 1-${MAX_MESSAGE_CHARS} characters.` });
+      }
+    }
+    // Send only recent context — bounds token spend per request.
+    const cappedMessages = messages.slice(-MAX_CHAT_MESSAGES);
 
     let ai;
     try {
@@ -60,47 +119,51 @@ export async function postGeminiChat(req, res) {
 
       if (sessionId) {
         const lastUserMsg = messages[messages.length - 1];
-        if (lastUserMsg) await logAiMessage(sessionId, { role: 'user', content: lastUserMsg.content }, clientName);
-        await logAiMessage(sessionId, { role: 'model', content: offlineResponse }, clientName);
+        await safeLogAiMessage(sessionId, { role: 'user', content: lastUserMsg?.content }, clientName);
+        await safeLogAiMessage(sessionId, { role: 'model', content: offlineResponse }, clientName);
       }
 
       return res.status(200).json({ response: offlineResponse, warning: 'GEMINI_API_KEY_MISSING' });
     }
 
-    const contents = messages.map((msg) => ({
+    const contents = cappedMessages.map((msg) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }]
     }));
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_MODEL,
       contents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: 0.7
       }
-    });
+    }).catch((err) => { throw mapProviderError(err); });
 
-    const text = response.text || 'I apologize, but I am unable to generate a response at this moment. How else can I assist you with your catering plans?';
+    const text = extractText(response) || 'I apologize, but I am unable to generate a response at this moment. How else can I assist you with your catering plans?';
 
     if (sessionId) {
       const lastUserMsg = messages[messages.length - 1];
-      if (lastUserMsg) await logAiMessage(sessionId, { role: 'user', content: lastUserMsg.content }, clientName);
-      await logAiMessage(sessionId, { role: 'model', content: text }, clientName);
+      await safeLogAiMessage(sessionId, { role: 'user', content: lastUserMsg?.content }, clientName);
+      await safeLogAiMessage(sessionId, { role: 'model', content: text }, clientName);
     }
 
     return res.json({ response: text });
   } catch (error) {
-    console.error('Gemini API Error:', error);
-    return res.status(500).json({ error: error.message || 'Internal Server Error in Gemini API' });
+    if (error instanceof ApiError) return next(error);
+    console.error('[Gemini] chat failed:', error?.message || error);
+    return next(new ApiError(502, 'AI service temporarily unavailable. Please try again shortly.'));
   }
 }
 
-export async function postGenerateDescription(req, res) {
+export async function postGenerateDescription(req, res, next) {
   try {
     const { prompt } = req.body;
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required.' });
+    }
+    if (typeof prompt !== 'string' || prompt.length > MAX_TOOL_PROMPT_CHARS) {
+      return res.status(400).json({ error: `Prompt must be text of at most ${MAX_TOOL_PROMPT_CHARS} characters.` });
     }
 
     let ai;
@@ -111,23 +174,29 @@ export async function postGenerateDescription(req, res) {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_MODEL,
       contents: [{ role: 'user', parts: [{ text: `Generate an elegant event description for a catering service based on the following: ${prompt}. Keep it professional, inviting, and under 100 words.` }] }],
       config: { temperature: 0.7 }
-    });
+    }).catch((err) => { throw mapProviderError(err); });
 
-    return res.json({ description: response.text || '' });
+    return res.json({ description: extractText(response) });
   } catch (error) {
-    console.error('Gemini generate description error:', error);
-    return res.status(500).json({ error: error.message });
+    if (error instanceof ApiError) return next(error);
+    console.error('[Gemini] generate-description failed:', error?.message || error);
+    return next(new ApiError(502, 'AI service temporarily unavailable. Please try again shortly.'));
   }
 }
 
-export async function postSuggestMenu(req, res) {
+export async function postSuggestMenu(req, res, next) {
   try {
     const { eventType, guests, cuisine, dietary } = req.body;
     if (!eventType) {
       return res.status(400).json({ error: 'Event type is required.' });
+    }
+    for (const [label, value] of [['eventType', eventType], ['guests', guests], ['cuisine', cuisine], ['dietary', dietary]]) {
+      if (value !== undefined && (typeof value !== 'string' || value.length > MAX_TOOL_PROMPT_CHARS)) {
+        return res.status(400).json({ error: `${label} must be text of at most ${MAX_TOOL_PROMPT_CHARS} characters.` });
+      }
     }
 
     let ai;
@@ -140,14 +209,20 @@ export async function postSuggestMenu(req, res) {
     const prompt = `Suggest a catering menu for a ${eventType} with ${guests || 'N/A'} guests. Preferred cuisine: ${cuisine || 'Multi-cuisine'}. Dietary restrictions: ${dietary || 'None'}. List 5-7 dish recommendations with brief descriptions. Keep it under 150 words.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: GEMINI_MODEL,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: { temperature: 0.7 }
-    });
+    }).catch((err) => { throw mapProviderError(err); });
 
-    return res.json({ suggestions: response.text || '' });
+    return res.json({ suggestions: extractText(response) });
   } catch (error) {
-    console.error('Gemini suggest menu error:', error);
-    return res.status(500).json({ error: error.message });
+    if (error instanceof ApiError) return next(error);
+    console.error('[Gemini] suggest-menu failed:', error?.message || error);
+    return next(new ApiError(502, 'AI service temporarily unavailable. Please try again shortly.'));
   }
+}
+
+export async function getGeminiStatus(req, res) {
+  const configured = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY');
+  return res.json({ configured, model: GEMINI_MODEL });
 }

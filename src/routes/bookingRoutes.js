@@ -7,6 +7,7 @@ import {
 } from '../controllers/bookingController.js';
 import { bookingValidation } from '../validators/bookingValidator.js';
 import { validateRequest } from '../middlewares/validatorMiddleware.js';
+import { checkHoneypot } from '../middlewares/honeypotMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import { authorize } from '../middlewares/roleMiddleware.js';
 
@@ -23,7 +24,7 @@ const bookingSubmitLimiter = rateLimit({
 // Public routes for slot & availability lookup and booking submission
 router.get('/availability', getBookingAvailability);
 router.get('/slots', getAvailableSlotsForDate);
-router.post('/', bookingSubmitLimiter, bookingValidation, validateRequest, createBooking);
+router.post('/', bookingSubmitLimiter, checkHoneypot, bookingValidation, validateRequest, createBooking);
 
 // Protected routes for admin management (Super Admin, Admin, Manager only)
 router.get('/', protect, authorize('super_admin', 'admin', 'manager'), getAllBookings);

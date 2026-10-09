@@ -40,8 +40,25 @@ export const uploadMedia = async (req, res, next) => {
     }
 
     if (file) {
+      // Magic-byte verification for claimed images (extension/mime are spoofable).
+      if (file.mimetype && file.mimetype.startsWith('image/') && !isRealImage(file.path)) {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+        return next(new ApiError(400, 'Uploaded file is not a valid image.'));
+      }
       url = `/uploads/${file.filename}`;
-    } else if (body.url) {
+    } else if (typeof body.url === 'string' && body.url.length > 0) {
+      // External URL attachments must be http(s) only — never javascript:/data: schemes.
+      let parsed;
+      try {
+        parsed = new URL(body.url);
+      } catch {
+        return next(new ApiError(400, 'Invalid attachment URL.'));
+      }
+      if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || body.url.length > 2048) {
+        return next(new ApiError(400, 'Attachment URL must be an http(s) URL of at most 2048 characters.'));
+      }
       url = body.url;
     }
 

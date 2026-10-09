@@ -9,7 +9,8 @@ const TESTIMONIAL_FIELDS = ['name', 'role', 'company', 'rating', 'comment', 'ava
 
 export const getTestimonials = async (req, res, next) => {
   try {
-    const list = await Testimonial.find({ status: 'Approved' }).sort({ createdAt: -1 }).lean();
+    const limitNum = Math.min(Math.max(parseInt(req.query.limit) || 100, 1), 100);
+    const list = await Testimonial.find({ status: 'Approved' }).sort({ createdAt: -1 }).limit(limitNum).lean();
     return res.status(200).json(new ApiResponse(200, list, 'Testimonials retrieved'));
   } catch (error) {
     next(error);
@@ -18,10 +19,16 @@ export const getTestimonials = async (req, res, next) => {
 
 export const getAllTestimonials = async (req, res, next) => {
   try {
-    const { status } = req.query;
+    const { status, page = 1, limit = 20 } = req.query;
     const filter = status && ['Pending', 'Approved', 'Rejected'].includes(status.trim()) ? { status: status.trim() } : {};
-    const list = await Testimonial.find(filter).sort({ createdAt: -1 }).lean();
-    return res.status(200).json(new ApiResponse(200, list, 'Testimonials retrieved'));
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+    const [list, total] = await Promise.all([
+      Testimonial.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Testimonial.countDocuments(filter),
+    ]);
+    return res.status(200).json(new ApiResponse(200, { testimonials: list, total, page: pageNum, totalPages: Math.ceil(total / limitNum) || 1 }, 'Testimonials retrieved'));
   } catch (error) {
     next(error);
   }

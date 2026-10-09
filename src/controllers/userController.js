@@ -6,6 +6,9 @@ import { sendWelcomeEmail, sendPasswordResetEmail } from '../utils/emailService.
 import { createNotificationHelper } from '../utils/notificationService.js';
 import { safeSearchTerm } from '../utils/regexUtils.js';
 import { pick } from '../utils/pick.js';
+import { ROLES } from '../constants/roles.js';
+
+const VALID_ROLES = Object.values(ROLES);
 
 export const getUsers = async (req, res, next) => {
   try {
@@ -30,8 +33,8 @@ export const getUsers = async (req, res, next) => {
     if (sortBy === 'oldest') sortOptions = { createdAt: 1 };
     else if (sortBy === 'name') sortOptions = { name: 1 };
 
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 10;
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
     const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([
@@ -92,6 +95,14 @@ export const createUser = async (req, res, next) => {
 
     const hashedPassword = await hashPassword(body.password);
 
+    const requestedRole = (body.role || 'customer').toLowerCase();
+    if (!VALID_ROLES.includes(requestedRole)) {
+      return next(new ApiError(400, `Role must be one of: ${VALID_ROLES.join(', ')}`));
+    }
+    if (requestedRole === ROLES.SUPER_ADMIN && req.user?.role !== ROLES.SUPER_ADMIN) {
+      return next(new ApiError(403, 'Only a Super Admin can create another Super Admin'));
+    }
+
     const userData = {
       firstName,
       lastName,
@@ -100,7 +111,7 @@ export const createUser = async (req, res, next) => {
       mobile,
       username: username || undefined,
       password: hashedPassword,
-      role: (body.role || 'admin').toLowerCase(),
+      role: requestedRole,
       profilePicture: body.profilePicture || body.avatar || '',
       status: body.status || 'Active',
       createdBy: req.user?.id || null,
@@ -152,6 +163,12 @@ export const updateUser = async (req, res, next) => {
       body.name = `${body.firstName || ''} ${body.lastName || ''}`.trim();
     }
     if (body.role) body.role = body.role.toLowerCase();
+    if (body.role && !VALID_ROLES.includes(body.role)) {
+      return next(new ApiError(400, `Role must be one of: ${VALID_ROLES.join(', ')}`));
+    }
+    if (body.role === ROLES.SUPER_ADMIN && req.user?.role !== ROLES.SUPER_ADMIN) {
+      return next(new ApiError(403, 'Only a Super Admin can assign the Super Admin role'));
+    }
     body.updatedBy = req.user?.id || null;
 
     delete body.password;
@@ -243,11 +260,12 @@ export const resetUserPassword = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { newPassword } = req.body;
-    const password = newPassword || 'Reset@1234';
 
-    if (password.length < 8) {
-      return next(new ApiError(400, 'Password must be at least 8 characters'));
+    // Require an explicit password — never fall back to a well-known default.
+    if (!newPassword || newPassword.length < 8) {
+      return next(new ApiError(400, 'A new password of at least 8 characters is required'));
     }
+    const password = newPassword;
 
     const hashedPwd = await hashPassword(password);
     const updated = await User.findByIdAndUpdate(id, { password: hashedPwd, updatedBy: req.user?.id || null }, { runValidators: true });

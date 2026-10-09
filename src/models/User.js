@@ -10,15 +10,16 @@ const userSchema = new mongoose.Schema({
   mobile: { type: String, default: '' },
   username: { type: String, unique: true, sparse: true },
   password: { type: String, required: true },
-  role: { type: String, enum: Object.values(ROLES), default: ROLES.ADMIN },
+  role: { type: String, enum: Object.values(ROLES), default: ROLES.CUSTOMER },
   profilePicture: { type: String, default: '' },
   status: { type: String, enum: ['Active', 'Inactive', 'Suspended'], default: 'Active' },
-  permissions: { type: [String], default: ['all'] },
+  permissions: { type: [String], default: [] },
   verified: { type: Boolean, default: true },
   lastLogin: { type: Date },
   otpReset: {
     codeHash: { type: String, default: '' },
-    expiresAt: { type: Date, default: null }
+    expiresAt: { type: Date, default: null },
+    attempts: { type: Number, default: 0 }
   },
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date },

@@ -1,9 +1,14 @@
 import { ChatInquiry } from '../models/ChatInquiry.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { ApiError } from '../utils/apiError.js';
 
 export const handleChatQuery = async (req, res, next) => {
   try {
     const { message, sessionId } = req.body;
+
+    if (message !== undefined && (typeof message !== 'string' || message.length > 2000)) {
+      return next(new ApiError(400, 'Message must be text of at most 2000 characters'));
+    }
 
     let responseText = "Welcome to Eveng Catering Concierge! We specialize in bespoke royal banquets, corporate summits, and intimate gourmet gatherings. How may I assist with your upcoming event?";
 

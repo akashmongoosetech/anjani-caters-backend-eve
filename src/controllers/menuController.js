@@ -54,7 +54,7 @@ export const getMenuItems = async (req, res, next) => {
     else if (sortBy === 'price') sort = { price: 1 };
 
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
 
     const [items, total, categories] = await Promise.all([
       MenuItem.find(filter)

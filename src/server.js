@@ -29,7 +29,29 @@ async function startServer() {
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`[Backend] Eveng Catering API Server running on port ${PORT}`);
     logSmtpHealth();
+    import('./controllers/geminiController.js').then((m) => m.logGeminiHealth?.()).catch(() => {});
   });
+
+  const shutdown = (signal) => {
+    console.log(`[Backend] ${signal} received, shutting down gracefully...`);
+    httpServer.close(async () => {
+      try {
+        const mongoose = (await import('mongoose')).default;
+        await mongoose.disconnect();
+      } catch {}
+      try {
+        const { closeDb } = await import('./services/databaseService.js');
+        if (typeof closeDb === 'function') await closeDb();
+      } catch {}
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  return httpServer;
 }
 
 process.on('uncaughtException', (err) => {

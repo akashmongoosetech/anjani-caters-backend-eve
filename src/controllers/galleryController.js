@@ -33,7 +33,7 @@ export const getGalleryItems = async (req, res, next) => {
     else if (sortBy === 'displayOrder') sort = { displayOrder: 1 };
 
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
 
     const [items, total] = await Promise.all([
       Gallery.find(filter)

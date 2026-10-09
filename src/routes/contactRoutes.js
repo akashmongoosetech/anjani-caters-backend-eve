@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { submitContact, getAllContacts, getContactById, updateContactStatus, deleteContact, deleteContactsBulk, deleteAllContacts } from '../controllers/contactController.js';
 import { contactValidation } from '../validators/contactValidator.js';
 import { validateRequest } from '../middlewares/validatorMiddleware.js';
+import { checkHoneypot } from '../middlewares/honeypotMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import { authorize } from '../middlewares/roleMiddleware.js';
 
@@ -16,7 +17,7 @@ const contactSubmitLimiter = rateLimit({
   message: { success: false, message: 'Too many contact submissions, please try again later.' }
 });
 
-router.post('/', contactSubmitLimiter, contactValidation, validateRequest, submitContact);
+router.post('/', contactSubmitLimiter, checkHoneypot, contactValidation, validateRequest, submitContact);
 router.get('/', protect, authorize('super_admin', 'admin', 'manager', 'staff'), getAllContacts);
 router.get('/:id', protect, authorize('super_admin', 'admin', 'manager', 'staff'), getContactById);
 router.patch('/:id/status', protect, authorize('super_admin', 'admin', 'manager', 'staff'), updateContactStatus);

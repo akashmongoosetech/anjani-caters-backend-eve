@@ -3,7 +3,7 @@ import { hashPassword } from '../utils/password.js';
 import { ROLES } from '../constants/roles.js';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'sales@anjanievents.in';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin123!';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_NAME = process.env.ADMIN_NAME || 'Executive Admin';
 
 export const seedAdmin = async () => {
@@ -11,6 +11,12 @@ export const seedAdmin = async () => {
     const existing = await User.findOne({ email: ADMIN_EMAIL });
     if (existing) {
       console.log(`[Seed] Admin already exists: ${ADMIN_EMAIL}`);
+      return;
+    }
+
+    // Fail closed: never boot with a well-known default admin password.
+    if (!ADMIN_PASSWORD) {
+      console.error('[Seed] ADMIN_PASSWORD is not set. Skipping default admin creation. Set ADMIN_PASSWORD in the environment and restart.');
       return;
     }
 

@@ -48,8 +48,8 @@ export const getAllOrders = async (req, res, next) => {
     let sortOptions = { createdAt: -1 };
     if (sortBy === 'oldest') sortOptions = { createdAt: 1 };
 
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 10;
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
     const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([
