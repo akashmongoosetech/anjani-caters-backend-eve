@@ -101,6 +101,17 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// Root: friendly pointer so probes/visitors don't hit an empty Express 404.
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    system: 'Eveng Catering Enterprise Backend',
+    docs: '/api/docs',
+    health: '/api/health',
+    sitemap: '/api/sitemap.xml'
+  });
+});
+
 // Sitemap endpoint (XML)
 app.get('/api/sitemap.xml', getSitemap);
 
