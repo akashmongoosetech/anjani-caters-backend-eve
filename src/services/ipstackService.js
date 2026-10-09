@@ -136,7 +136,13 @@ export async function lookupIp(rawIp) {
     return { eligible: true, cached: false, error: 'missing_key' };
   }
 
-  const url = `${baseUrl()}/${encodeURIComponent(ip)}?access_key=${encodeURIComponent(apiKey)}`;
+  // Request only the fields we persist — smaller payload, same data.
+  const fields = [
+    'ip', 'type', 'country_code', 'country_name', 'region_code', 'region_name',
+    'city', 'zip', 'latitude', 'longitude', 'time_zone',
+    'continent_code', 'continent_name', 'calling_code', 'connection',
+  ].join(',');
+  const url = `${baseUrl()}/${encodeURIComponent(ip)}?access_key=${encodeURIComponent(apiKey)}&fields=${encodeURIComponent(fields)}`;
   let lastErr = '';
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
