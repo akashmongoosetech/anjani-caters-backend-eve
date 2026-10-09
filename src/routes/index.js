@@ -25,6 +25,7 @@ import geminiRoutes from './geminiRoutes.js';
 import chatbotBookingRoutes from './chatbotBookingRoutes.js';
 import projectRoutes from './projectRoutes.js';
 import teamRoutes from './teamRoutes.js';
+import visitorRoutes from './visitorRoutes.js';
 import utilityRoutes from './utilityRoutes.js';
 
 const router = Router();
@@ -55,6 +56,7 @@ router.use('/gemini', geminiRoutes);
 router.use('/chatbot', chatbotBookingRoutes);
 router.use('/projects', projectRoutes);
 router.use('/team', teamRoutes);
+router.use('/visitors', visitorRoutes);
 router.use('/', utilityRoutes);
 
 export default router;
