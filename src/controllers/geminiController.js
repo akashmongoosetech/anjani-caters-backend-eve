@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { logAiMessage } from '../services/databaseService.js';
 import { ApiError } from '../utils/apiError.js';
 
-export const GEMINI_MODEL = 'gemini-2.0-flash';
+export const GEMINI_MODEL = 'gemini-3.8-flash';
 
 // Session logging must never turn a good AI reply into a 500.
 async function safeLogAiMessage(sessionId, message, clientName) {
