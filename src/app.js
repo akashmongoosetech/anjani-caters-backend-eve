@@ -95,7 +95,7 @@ app.get('/api/health', async (req, res) => {
   const dbState = mongoose.connection.readyState; // 1 = connected
   res.json({
     status: dbState === 1 ? 'online' : 'degraded',
-    system: 'Eveng Catering Enterprise Backend',
+    system: 'Anjani Catering & Events Backend',
     db: dbState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
@@ -105,7 +105,7 @@ app.get('/api/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    system: 'Eveng Catering Enterprise Backend',
+    system: 'Anjani Catering & Events Backend',
     docs: '/api/docs',
     health: '/api/health',
     sitemap: '/api/sitemap.xml'

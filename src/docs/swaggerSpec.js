@@ -1,9 +1,9 @@
 export const apiDocs = {
   openapi: "3.0.0",
   info: {
-    title: "Eveng Catering Enterprise REST API",
+    title: "Anjani Catering & Events REST API",
     version: "1.0.0",
-    description: "Production REST API server for Eveng Catering system supplying authentication, booking management, contact inquiries, AI concierge, orders, and admin controls."
+    description: "Production REST API server for Anjani Catering & Events supplying authentication, booking management, contact inquiries, AI concierge, orders, and admin controls."
   },
   servers: [
     {

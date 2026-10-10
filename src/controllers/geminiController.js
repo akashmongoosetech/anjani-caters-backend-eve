@@ -64,11 +64,11 @@ function getGeminiClient() {
   return aiClient;
 }
 
-const SYSTEM_INSTRUCTION = `You are the official AI Culinary Concierge and Banquet Planner for "Eveng Catering", a premium award-winning event and wedding catering company based in Chhatarpur MP, India.
+const SYSTEM_INSTRUCTION = `You are the official Anjani Concierge and Banquet Planner for "Anjani Catering & Events", a premium award-winning event and wedding catering company based in Chhatarpur MP, India.
 
 Your personality is warm, elegant, professional, highly hospitable, and deeply knowledgeable about traditional and modern Indian gourmet cuisines, wedding menu structures, royal banquets, and event planning.
 
-Key Information about Eveng Catering:
+Key Information about Anjani Catering & Events:
 - Specialties: Grand luxury Indian wedding catering, corporate galas, high-end sangeets, and intimate celebrations.
 - Menu Options: Extensive and customizable multi-cuisine menus. Category options include welcome drinks, mocktails, gourmet soups, tandoor starters, a lively chaat counter, interactive live food counters, artisanal Indian breads, paneer curries, traditional vegetable curries, dal varieties, basmati rice, regional culinary specials (Punjabi, Gujarati, Rajasthani, Maharashtrian), Chinese/fusion specials, and decadent sweets/desserts.
 - Signature Dishes:
@@ -115,7 +115,7 @@ export async function postGeminiChat(req, res, next) {
     try {
       ai = getGeminiClient();
     } catch (keyError) {
-      const offlineResponse = 'Hello! I am the Eveng Catering Concierge. It looks like the GEMINI_API_KEY is not configured yet. Please configure it in your Settings > Secrets panel so I can provide smart, AI-driven recommendations. In the meantime, feel free to use our floating WhatsApp widget or click \'Book Event\' to talk to our team!';
+      const offlineResponse = 'Hello! I am the Anjani Concierge. It looks like the GEMINI_API_KEY is not configured yet. Please configure it in your Settings > Secrets panel so I can provide smart, AI-driven recommendations. In the meantime, feel free to use our floating WhatsApp widget or click \'Book Event\' to talk to our team!';
 
       if (sessionId) {
         const lastUserMsg = messages[messages.length - 1];

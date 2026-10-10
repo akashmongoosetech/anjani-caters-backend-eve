@@ -10,7 +10,7 @@ export const handleChatQuery = async (req, res, next) => {
       return next(new ApiError(400, 'Message must be text of at most 2000 characters'));
     }
 
-    let responseText = "Welcome to Eveng Catering Concierge! We specialize in bespoke royal banquets, corporate summits, and intimate gourmet gatherings. How may I assist with your upcoming event?";
+    let responseText = "Welcome to Anjani Catering & Events Concierge! We specialize in bespoke royal banquets, corporate summits, and intimate gourmet gatherings. How may I assist with your upcoming event?";
 
     const query = (message || '').toLowerCase();
     if (query.includes('price') || query.includes('cost') || query.includes('package')) {

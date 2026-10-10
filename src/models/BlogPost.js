@@ -7,7 +7,7 @@ const blogPostSchema = new mongoose.Schema({
   content: { type: String, required: true },
   featuredImage: { type: String, default: '' },
   galleryImages: [{ type: String }],
-  author: { type: String, default: 'Eveng Culinary Team' },
+  author: { type: String, default: 'Anjani Culinary Team' },
   authorAvatar: { type: String, default: '' },
   category: { type: String, default: 'Catering Trends' },
   tags: [{ type: String }],

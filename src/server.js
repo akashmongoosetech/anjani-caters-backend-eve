@@ -28,7 +28,7 @@ async function startServer() {
   setupSocket(httpServer);
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Backend] Eveng Catering API Server running on port ${PORT}`);
+    console.log(`[Backend] Anjani Catering & Events API Server running on port ${PORT}`);
     logSmtpHealth();
     logIpstackHealth();
     import('./controllers/geminiController.js').then((m) => m.logGeminiHealth?.()).catch(() => {});
