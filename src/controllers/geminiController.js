@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { logAiMessage } from '../services/databaseService.js';
 import { ApiError } from '../utils/apiError.js';
+import { resolveLanguagePreference, languageDirective } from '../services/languagePreference.js';
 
 export const GEMINI_MODEL = 'gemini-3.8-flash';
 
@@ -99,7 +100,7 @@ const MAX_TOOL_PROMPT_CHARS = 2000;
 
 export async function postGeminiChat(req, res, next) {
   try {
-    const { messages, sessionId, clientName } = req.body;
+    const { messages, sessionId, clientName, uiLanguage } = req.body;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Invalid request. A non-empty 'messages' array is required." });
     }
@@ -110,12 +111,18 @@ export async function postGeminiChat(req, res, next) {
     }
     // Send only recent context — bounds token spend per request.
     const cappedMessages = messages.slice(-MAX_CHAT_MESSAGES);
+    // Behavior-based language: resolved from explicit instructions, current
+    // message, and conversation context (never from mic settings).
+    const language = resolveLanguagePreference({ messages: cappedMessages, uiLanguage });
+    const systemInstruction = `${SYSTEM_INSTRUCTION}\n\n${languageDirective(language)}`;
 
     let ai;
     try {
       ai = getGeminiClient();
     } catch (keyError) {
-      const offlineResponse = 'Hello! I am the Anjani Concierge. It looks like the GEMINI_API_KEY is not configured yet. Please configure it in your Settings > Secrets panel so I can provide smart, AI-driven recommendations. In the meantime, feel free to use our floating WhatsApp widget or click \'Book Event\' to talk to our team!';
+      const offlineResponse = language === 'hi'
+        ? 'नमस्ते! मैं अंजनी कॉन्सिएर्ज हूँ। फ़िलहाल AI सेवा उपलब्ध नहीं है — कृपया अपना प्रश्न लिखें, या WhatsApp विजेट से हमारी टीम से संपर्क करें!'
+        : 'Hello! I am the Anjani Concierge. It looks like the GEMINI_API_KEY is not configured yet. Please configure it in your Settings > Secrets panel so I can provide smart, AI-driven recommendations. In the meantime, feel free to use our floating WhatsApp widget or click \'Book Event\' to talk to our team!';
 
       if (sessionId) {
         const lastUserMsg = messages[messages.length - 1];
@@ -123,7 +130,7 @@ export async function postGeminiChat(req, res, next) {
         await safeLogAiMessage(sessionId, { role: 'model', content: offlineResponse }, clientName);
       }
 
-      return res.status(200).json({ response: offlineResponse, warning: 'GEMINI_API_KEY_MISSING' });
+      return res.status(200).json({ response: offlineResponse, language, warning: 'GEMINI_API_KEY_MISSING' });
     }
 
     const contents = cappedMessages.map((msg) => ({
@@ -135,7 +142,7 @@ export async function postGeminiChat(req, res, next) {
       model: GEMINI_MODEL,
       contents,
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
+        systemInstruction,
         temperature: 0.7
       }
     }).catch((err) => { throw mapProviderError(err); });
@@ -148,7 +155,7 @@ export async function postGeminiChat(req, res, next) {
       await safeLogAiMessage(sessionId, { role: 'model', content: text }, clientName);
     }
 
-    return res.json({ response: text });
+    return res.json({ response: text, language });
   } catch (error) {
     if (error instanceof ApiError) return next(error);
     console.error('[Gemini] chat failed:', error?.message || error);
